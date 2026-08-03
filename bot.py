@@ -25,6 +25,16 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "users.db")
 
+# 🔴 বাটন পাশাপাশি ২ টি করে সাজানোর হেল্পার ফাংশন (Side-by-Side 2 Columns)
+def create_2col_markup(button_list):
+    markup = types.InlineKeyboardMarkup()
+    for i in range(0, len(button_list), 2):
+        if i + 1 < len(button_list):
+            markup.row(button_list[i], button_list[i+1])
+        else:
+            markup.row(button_list[i])
+    return markup
+
 # ----------------- ডাটাবেজ সেটআপ -----------------
 def init_db():
     conn = sqlite3.connect(DB_FILE, timeout=30)
@@ -63,7 +73,21 @@ def init_db():
             status TEXT DEFAULT 'Unclaimed'
         )
     """)
-    # 🔴 ৩-স্তরের সার্ভিস ডাটাবেজ টেবিল (Main Category -> Sub Category -> Services)
+    # 🔴 আলাদা প্ল্যাটফর্ম টেবিল
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS main_categories (
+            name TEXT PRIMARY KEY
+        )
+    """)
+    # 🔴 আলাদা সাব-ক্যাটাগরি টেবিল
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sub_categories (
+            main_name TEXT,
+            sub_name TEXT,
+            PRIMARY KEY (main_name, sub_name)
+        )
+    """)
+    # 🔴 সার্ভিস টেবিল
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS services (
             main_cat TEXT,
@@ -149,7 +173,7 @@ def get_user_stats(chat_id):
     conn.close()
     return total_orders, total_payments
 
-# --- জয়েন চ্যানেল ফাংশনসমূহ ---
+# --- জয়েন চ্যানেল ফাংশনসমূহ (FIXED) ---
 def add_force_channel(channel_id, channel_name, invite_link):
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
@@ -181,22 +205,37 @@ def check_user_joined_all(chat_id):
             if member.status in ['left', 'kicked']:
                 unjoined.append(ch)
         except Exception:
-            unjoined.append(ch)
+            # যদি বোট মেম্বারশিপ চেক না করতে পারে, কাস্টমারকে ব্লক করবে না
+            pass
     return unjoined
 
 # --- ৩-লেভেল ক্যাটাগরি ও সার্ভিস ডাটাবেজ হেল্পার ---
+def add_main_category(name):
+    conn = sqlite3.connect(DB_FILE, timeout=30)
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO main_categories VALUES (?)", (name,))
+    conn.commit()
+    conn.close()
+
 def get_main_categories():
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT main_cat FROM services")
+    cursor.execute("SELECT name FROM main_categories")
     rows = cursor.fetchall()
     conn.close()
     return [r[0] for r in rows]
 
+def add_sub_category(main_name, sub_name):
+    conn = sqlite3.connect(DB_FILE, timeout=30)
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO sub_categories VALUES (?, ?)", (main_name, sub_name))
+    conn.commit()
+    conn.close()
+
 def get_sub_categories(main_cat):
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
-    cursor.execute("SELECT DISTINCT sub_cat FROM services WHERE main_cat = ?", (main_cat,))
+    cursor.execute("SELECT sub_name FROM sub_categories WHERE main_name = ?", (main_cat,))
     rows = cursor.fetchall()
     conn.close()
     return [r[0] for r in rows]
@@ -351,15 +390,17 @@ def admin_panel_command(message):
     if message.chat.id != ADMIN_ID:
         return
 
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    btn1 = types.InlineKeyboardButton("➕ সার্ভিস যোগ করুন", callback_data="admin_add_service_start")
-    btn2 = types.InlineKeyboardButton("🔍 ইউজার ইনফো ও কয়েন", callback_data="admin_user_info_start")
-    btn3 = types.InlineKeyboardButton("📈 প্রফিট সেট", callback_data="admin_set_profit_start")
-    btn4 = types.InlineKeyboardButton("📢 জয়েন চ্যানেল সেটআপ", callback_data="admin_force_channel_menu")
-    btn5 = types.InlineKeyboardButton("🗑️ একটি সার্ভিস ডিলিট", callback_data="admin_delete_single_service_start")
-    btn6 = types.InlineKeyboardButton("💥 সকল সার্ভিস ডিলিট", callback_data="admin_clear_services_confirm")
-    
-    markup.add(btn1, btn2, btn3, btn4, btn5, btn6)
+    btn1 = types.InlineKeyboardButton("➕ মেইন প্ল্যাটফর্ম যোগ", callback_data="admin_add_main_cat")
+    btn2 = types.InlineKeyboardButton("📂 সাব-ক্যাটাগরি যোগ", callback_data="admin_add_sub_cat")
+    btn3 = types.InlineKeyboardButton("🛒 সার্ভিস যোগ করুন", callback_data="admin_add_service_start")
+    btn4 = types.InlineKeyboardButton("🔍 ইউজার ইনফো ও কয়েন", callback_data="admin_user_info_start")
+    btn5 = types.InlineKeyboardButton("📈 প্রফিট সেট", callback_data="admin_set_profit_start")
+    btn6 = types.InlineKeyboardButton("📢 জয়েন চ্যানেল সেটআপ", callback_data="admin_force_channel_menu")
+    btn7 = types.InlineKeyboardButton("🗑️ একটি সার্ভিস ডিলিট", callback_data="admin_delete_single_service_start")
+    btn8 = types.InlineKeyboardButton("💥 সকল সার্ভিস ডিলিট", callback_data="admin_clear_services_confirm")
+
+    # 🔴 ২ টি করে বাটন পাশে পাশে সাজানো
+    markup = create_2col_markup([btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8])
 
     bot.send_message(
         ADMIN_ID,
@@ -370,73 +411,92 @@ def admin_panel_command(message):
         parse_mode="HTML"
     )
 
-# ---------------- 1. ডায়নামিক ৩-লেভেল সার্ভিস যোগ ----------------
+# --- 1. শুধু মেইন প্ল্যাটফর্ম তৈরি করা ---
+@bot.callback_query_handler(func=lambda call: call.data == "admin_add_main_cat")
+def admin_add_main_cat_start(call):
+    if call.message.chat.id != ADMIN_ID: return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(ADMIN_ID, "✍️ <b>নতুন মেইন প্ল্যাটফর্মের নাম লিখুন:</b>\n(যেমন: `🎵 TikTok Service` বা `👥 Facebook Service`)", parse_mode="HTML")
+    bot.register_next_step_handler(msg, admin_save_main_cat)
+
+def admin_save_main_cat(message):
+    mcat_name = message.text.strip()
+    add_main_category(mcat_name)
+    bot.send_message(ADMIN_ID, f"✅ <b>মেইন প্ল্যাটফর্ম [{mcat_name}] সফলভাবে তৈরি হয়েছে!</b>", parse_mode="HTML")
+
+# --- 2. শুধু সাব-ক্যাটাগরি তৈরি করা ---
+@bot.callback_query_handler(func=lambda call: call.data == "admin_add_sub_cat")
+def admin_add_sub_cat_start(call):
+    if call.message.chat.id != ADMIN_ID: return
+    bot.answer_callback_query(call.id)
+
+    main_cats = get_main_categories()
+    if not main_cats:
+        bot.send_message(ADMIN_ID, "❌ আগে মেইন প্ল্যাটফর্ম তৈরি করুন!", parse_mode="HTML")
+        return
+
+    btns = [types.InlineKeyboardButton(f"📁 {mc}", callback_data=f"admsubsel_{mc}") for mc in main_cats]
+    markup = create_2col_markup(btns)
+    bot.send_message(ADMIN_ID, "📁 <b>কোন প্ল্যাটফর্মের ভেতরে সাব-ক্যাটাগরি যোগ করবেন?</b>", reply_markup=markup, parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admsubsel_"))
+def admin_sub_cat_get_name(call):
+    if call.message.chat.id != ADMIN_ID: return
+    bot.answer_callback_query(call.id)
+    mcat_name = call.data.replace("admsubsel_", "")
+
+    msg = bot.send_message(ADMIN_ID, f"✍️ <b>[{mcat_name}] প্ল্যাটফর্মের নতুন সাব-ক্যাটাগরির নাম লিখুন:</b>\n(যেমন: `TikTok View` বা `FB Like`)", parse_mode="HTML")
+    bot.register_next_step_handler(msg, admin_save_sub_cat, mcat_name)
+
+def admin_save_sub_cat(message, mcat_name):
+    sub_name = message.text.strip()
+    add_sub_category(mcat_name, sub_name)
+    bot.send_message(ADMIN_ID, f"✅ <b>[{mcat_name}] -> [{sub_name}] সাব-ক্যাটাগরি তৈরি হয়েছে!</b>", parse_mode="HTML")
+
+# --- 3. আসল সার্ভিস যোগ করা ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_service_start")
 def admin_add_service_start(call):
     if call.message.chat.id != ADMIN_ID: return
     bot.answer_callback_query(call.id)
 
     main_cats = get_main_categories()
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    
-    for mc in main_cats:
-        markup.add(types.InlineKeyboardButton(f"📁 {mc}", callback_data=f"admmcat_{mc}"))
-        
-    markup.add(types.InlineKeyboardButton("➕ নতুন প্ল্যাটফর্ম তৈরি করুন", callback_data="admmcat_NEW_MAIN"))
+    if not main_cats:
+        bot.send_message(ADMIN_ID, "❌ কোনো মেইন প্ল্যাটফর্ম নেই! আগে মেইন প্ল্যাটফর্ম যোগ করুন।", parse_mode="HTML")
+        return
 
-    bot.send_message(ADMIN_ID, "📁 <b>১ম ধাপ: মেইন প্ল্যাটফর্ম বেছে নিন বা নতুন প্ল্যাটফর্ম তৈরি করুন:</b>\n(যেমন: `TikTok Service`, `Facebook Service`)", reply_markup=markup, parse_mode="HTML")
+    btns = [types.InlineKeyboardButton(f"📁 {mc}", callback_data=f"admcatm_{mc}") for mc in main_cats]
+    markup = create_2col_markup(btns)
+    bot.send_message(ADMIN_ID, "📁 <b>মেইন প্ল্যাটফর্ম সিলেক্ট করুন:</b>", reply_markup=markup, parse_mode="HTML")
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admmcat_"))
-def admin_step_get_main_category(call):
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admcatm_"))
+def admin_step_select_sub_for_service(call):
     if call.message.chat.id != ADMIN_ID: return
     bot.answer_callback_query(call.id)
+    mcat_name = call.data.replace("admcatm_", "")
 
-    selected_mcat = call.data.replace("admmcat_", "")
-    
-    if selected_mcat == "NEW_MAIN":
-        msg = bot.send_message(ADMIN_ID, "✍️ <b>নতুন প্ল্যাটফর্মের নাম লিখুন:</b>\n(যেমন: `🎵 TikTok Service` বা `👥 Facebook Service`)", parse_mode="HTML")
-        bot.register_next_step_handler(msg, admin_step_get_custom_mcat)
-    else:
-        admin_step_show_sub_cats(selected_mcat)
-
-def admin_step_get_custom_mcat(message):
-    mcat_name = message.text.strip()
-    admin_step_show_sub_cats(mcat_name)
-
-def admin_step_show_sub_cats(mcat_name):
     sub_cats = get_sub_categories(mcat_name)
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    
-    for sc in sub_cats:
-        markup.add(types.InlineKeyboardButton(f"📂 {sc}", callback_data=f"admscat_{mcat_name}___{sc}"))
-        
-    markup.add(types.InlineKeyboardButton("➕ নতুন সাব-ক্যাটাগরি তৈরি করুন", callback_data=f"admscat_{mcat_name}___NEW_SUB"))
+    if not sub_cats:
+        bot.send_message(ADMIN_ID, f"❌ [{mcat_name}] এ কোনো সাব-ক্যাটাগরি নেই! আগে সাব-ক্যাটাগরি যোগ করুন।", parse_mode="HTML")
+        return
 
-    bot.send_message(ADMIN_ID, f"📂 <b>২য় ধাপ: [{mcat_name}] প্ল্যাটফর্মের সাব-ক্যাটাগরি বেছে নিন বা তৈরি করুন:</b>\n(যেমন: `TikTok View`, `TikTok Like` বা `FB Followers`)", reply_markup=markup, parse_mode="HTML")
+    btns = [types.InlineKeyboardButton(f"📂 {sc}", callback_data=f"admcats_{mcat_name}___{sc}") for sc in sub_cats]
+    markup = create_2col_markup(btns)
+    bot.send_message(ADMIN_ID, f"📂 <b>[{mcat_name}] এর সাব-ক্যাটাগরি সিলেক্ট করুন:</b>", reply_markup=markup, parse_mode="HTML")
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("admscat_"))
-def admin_step_get_sub_category(call):
+@bot.callback_query_handler(func=lambda call: call.data.startswith("admcats_"))
+def admin_step_get_choice_id(call):
     if call.message.chat.id != ADMIN_ID: return
     bot.answer_callback_query(call.id)
 
-    raw_data = call.data.replace("admscat_", "")
-    mcat_name, selected_scat = raw_data.split("___")
+    raw_data = call.data.replace("admcats_", "")
+    mcat_name, scat_name = raw_data.split("___")
 
-    if selected_scat == "NEW_SUB":
-        msg = bot.send_message(ADMIN_ID, f"✍️ <b>[{mcat_name}] প্ল্যাটফর্মের নতুন সাব-ক্যাটাগরির নাম লিখুন:</b>\n(যেমন: `TikTok View` বা `FB Page Like`)", parse_mode="HTML")
-        bot.register_next_step_handler(msg, admin_step_get_custom_scat, mcat_name)
-    else:
-        msg = bot.send_message(ADMIN_ID, f"🆔 <b>সাব-ক্যাটাগরি: [{selected_scat}]</b>\nকাস্টমার চয়েস ID কত দেবেন? (যেমন: 1, 2, 3 লিখে পাঠান):", parse_mode="HTML")
-        bot.register_next_step_handler(msg, admin_step_get_api_id, mcat_name, selected_scat)
-
-def admin_step_get_custom_scat(message, mcat_name):
-    scat_name = message.text.strip()
-    msg = bot.send_message(ADMIN_ID, f"🆔 <b>সাব-ক্যাটাগরি: [{scat_name}]</b>\nকাস্টমার চয়েস ID কত দেবেন? (যেমন: 1, 2, 3 লিখে পাঠান):", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, f"🆔 <b>[{scat_name}]</b>\nকাস্টমার চয়েস ID কত দেবেন? (যেমন: 1, 2, 3 লিখে পাঠান):", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_step_get_api_id, mcat_name, scat_name)
 
 def admin_step_get_api_id(message, mcat_name, scat_name):
     id_bot = message.text.strip()
-    msg = bot.send_message(ADMIN_ID, f"🔌 সোশ্যাল প্যানেল ওয়েবসাইটের <b>আসল API ID</b> টি কত? (যেমন: 19138):", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, f"🔌 ওয়েবসাইটের <b>আসল API ID</b> টি কত? (যেমন: 19138):", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_step_get_usd_cost, mcat_name, scat_name, id_bot)
 
 def admin_step_get_usd_cost(message, mcat_name, scat_name, id_bot):
@@ -448,7 +508,7 @@ def admin_step_get_min_qty(message, mcat_name, scat_name, id_bot, api_id):
     try:
         usd_cost = float(message.text.strip())
     except ValueError:
-        bot.send_message(ADMIN_ID, "❌ ভুল ডলার দাম! আবার /admin থেকে চেষ্টা করুন।")
+        bot.send_message(ADMIN_ID, "❌ ভুল ডলার দাম!")
         return
 
     msg = bot.send_message(ADMIN_ID, "🔢 এই সার্ভিসের জন্য <b>সর্বনিম্ন কোয়ান্টিটি (Min Qty)</b> কত দেবেন? (যেমন: 10, 100 বা 1000):", parse_mode="HTML")
@@ -460,7 +520,7 @@ def admin_step_get_name(message, mcat_name, scat_name, id_bot, api_id, usd_cost)
     except ValueError:
         min_qty = 10
 
-    msg = bot.send_message(ADMIN_ID, "📌 <b>সার্ভিসটির সুন্দর একটি নাম লিখে পাঠান:</b>", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, "📌 <b>সার্ভিসটির নাম লিখে পাঠান:</b>", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_step_save_service, mcat_name, scat_name, id_bot, api_id, usd_cost, min_qty)
 
 def admin_step_save_service(message, mcat_name, scat_name, id_bot, api_id, usd_cost, min_qty):
@@ -479,7 +539,7 @@ def admin_step_save_service(message, mcat_name, scat_name, id_bot, api_id, usd_c
 
     bot.send_message(
         ADMIN_ID,
-        f"✅ <b>সার্ভিসটি সফলভাবে ৩-স্তরে যুক্ত করা হয়েছে!</b>\n\n"
+        f"✅ <b>সার্ভিসটি সফলভাবে যুক্ত করা হয়েছে!</b>\n\n"
         f"📁 <b>প্ল্যাটফর্ম:</b> <code>{mcat_name}</code>\n"
         f"📂 <b>সাব-ক্যাটাগরি:</b> <code>{scat_name}</code>\n"
         f"🆔 <b>চয়েস ID:</b> <b>{id_bot}</b> | 🔌 <b>API ID:</b> <b>{api_id}</b>\n"
@@ -489,18 +549,17 @@ def admin_step_save_service(message, mcat_name, scat_name, id_bot, api_id, usd_c
         parse_mode="HTML"
     )
 
-# ---------------- 2. সিঙ্গেল সার্ভিস ডিলিট ----------------
+# ---------------- 4. সিঙ্গেল সার্ভিস ডিলিট ----------------
 @bot.callback_query_handler(func=lambda call: call.data == "admin_delete_single_service_start")
 def admin_delete_single_service_start(call):
     if call.message.chat.id != ADMIN_ID: return
     bot.answer_callback_query(call.id)
 
     main_cats = get_main_categories()
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    for mc in main_cats:
-        markup.add(types.InlineKeyboardButton(f"📁 {mc}", callback_data=f"delmcat_{mc}"))
+    btns = [types.InlineKeyboardButton(f"📁 {mc}", callback_data=f"delmcat_{mc}") for mc in main_cats]
+    markup = create_2col_markup(btns)
 
-    bot.send_message(ADMIN_ID, "🗑️ <b>কোন প্ল্যাটফর্মের সার্ভিস ডিলিট করবেন? সিলেক্ট করুন:</b>", reply_markup=markup, parse_mode="HTML")
+    bot.send_message(ADMIN_ID, "🗑️ <b>কোন প্ল্যাটফর্মের সার্ভিস ডিলিট করবেন?</b>", reply_markup=markup, parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delmcat_"))
 def admin_del_select_sub(call):
@@ -509,9 +568,8 @@ def admin_del_select_sub(call):
     mcat_name = call.data.replace("delmcat_", "")
 
     sub_cats = get_sub_categories(mcat_name)
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    for sc in sub_cats:
-        markup.add(types.InlineKeyboardButton(f"📂 {sc}", callback_data=f"delscat_{mcat_name}___{sc}"))
+    btns = [types.InlineKeyboardButton(f"📂 {sc}", callback_data=f"delscat_{mcat_name}___{sc}") for sc in sub_cats]
+    markup = create_2col_markup(btns)
 
     bot.send_message(ADMIN_ID, f"🗑️ <b>[{mcat_name}] এর সাব-ক্যাটাগরি সিলেক্ট করুন:</b>", reply_markup=markup, parse_mode="HTML")
 
@@ -530,7 +588,7 @@ def admin_process_delete_service(message, mcat_name, scat_name):
     delete_single_service(mcat_name, scat_name, id_bot)
     bot.send_message(ADMIN_ID, f"✅ <b>[{mcat_name}] -> [{scat_name}] থেকে সার্ভিস ID [{id_bot}] ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
 
-# ---------------- 3. ৪টি চ্যানেল জয়েন সেটআপ ----------------
+# ---------------- 5. ৪টি চ্যানেল জয়েন সেটআপ ----------------
 @bot.callback_query_handler(func=lambda call: call.data == "admin_force_channel_menu")
 def admin_force_channel_menu(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -577,7 +635,7 @@ def delchan_process(call):
     delete_force_channel(ch_id)
     bot.send_message(ADMIN_ID, "✅ <b>চ্যানেলটি ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
 
-# ---------------- 4. ইউজার ইনফো ও ব্যালেন্স এডিট ----------------
+# ---------------- 6. ইউজার ইনফো ও ব্যালেন্স এডিট ----------------
 @bot.callback_query_handler(func=lambda call: call.data == "admin_user_info_start")
 def admin_user_info_start(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -595,10 +653,9 @@ def admin_process_user_lookup(message):
     balance = get_balance(target_user)
     total_orders, total_payments = get_user_stats(target_user)
 
-    markup = types.InlineKeyboardMarkup(row_width=2)
     btn1 = types.InlineKeyboardButton("➕ কয়েন যোগ করুন", callback_data=f"admbal_ADD_{target_user}")
     btn2 = types.InlineKeyboardButton("✏️ কয়েন সেট/এডিট", callback_data=f"admbal_SET_{target_user}")
-    markup.add(btn1, btn2)
+    markup = create_2col_markup([btn1, btn2])
 
     info_text = (
         f"👤 <b>ইউজার অ্যাকাউন্ট ইনফরমেশন</b>\n"
@@ -708,6 +765,8 @@ def admin_clear_services_callback(call):
         conn = sqlite3.connect(DB_FILE, timeout=30)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM services")
+        cursor.execute("DELETE FROM main_categories")
+        cursor.execute("DELETE FROM sub_categories")
         conn.commit()
         conn.close()
         bot.send_message(ADMIN_ID, "🗑️ <b>সকল পুরাতন সার্ভিস ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
@@ -774,7 +833,7 @@ def send_main_menu(chat_id, first_name):
     )
     bot.send_message(chat_id, welcome_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
 
-# 🔴 ৩-স্তরের কাস্টমার ব্রাউজিং মেনু
+# 🔴 ৩-স্তরের কাস্টমার ব্রাউজিং মেনু (2 Columns Side-by-Side)
 @bot.message_handler(func=lambda message: True)
 def handle_menu_buttons(message):
     chat_id = message.chat.id
@@ -796,15 +855,13 @@ def handle_menu_buttons(message):
         bot.send_message(chat_id, account_text, parse_mode="HTML")
 
     elif text == "🛒 নতুন অর্ডার":
-        # 🔴 ১ম লেভেল: মেইন প্ল্যাটফর্ম বাটনসমূহ (পাশে পাশে ২টি করে)
         main_cats = get_main_categories()
         if not main_cats:
             bot.send_message(chat_id, "❌ <b>বর্তমানে কোনো সার্ভিস যুক্ত করা নেই।</b>\n\nএডমিন প্যানেল (/admin) থেকে সার্ভিস যোগ করুন।", parse_mode="HTML")
             return
 
-        markup = types.InlineKeyboardMarkup(row_width=2)
-        for mc in main_cats:
-            markup.add(types.InlineKeyboardButton(f"✨ {mc}", callback_data=f"mcat_{mc}"))
+        btns = [types.InlineKeyboardButton(f"✨ {mc}", callback_data=f"mcat_{mc}") for mc in main_cats]
+        markup = create_2col_markup(btns)
 
         bot.send_message(chat_id, "💸 <b>আমাদের সার্ভিস প্ল্যাটফর্ম নির্বাচন করুন:</b>", reply_markup=markup, parse_mode="HTML")
 
@@ -896,9 +953,8 @@ def handle_main_category_selection(call):
         bot.send_message(chat_id, "❌ <b>এই প্ল্যাটফর্মে এখনো কোনো সাব-ক্যাটাগরি যুক্ত করা হয়নি।</b>", parse_mode="HTML")
         return
 
-    markup = types.InlineKeyboardMarkup(row_width=2)
-    for sc in sub_cats:
-        markup.add(types.InlineKeyboardButton(f"📂 {sc}", callback_data=f"scat_{mcat_name}___{sc}"))
+    btns = [types.InlineKeyboardButton(f"📂 {sc}", callback_data=f"scat_{mcat_name}___{sc}") for sc in sub_cats]
+    markup = create_2col_markup(btns)
 
     bot.send_message(chat_id, f"📂 <b>[{mcat_name}] ক্যাটাগরি বেছে নিন:</b>", reply_markup=markup, parse_mode="HTML")
 
