@@ -5,6 +5,7 @@ import telebot
 import time
 import os
 import re
+import urllib.parse
 from threading import Thread
 from flask import Flask, request, jsonify
 from telebot import types
@@ -201,7 +202,7 @@ def get_services_by_category(category):
 
 init_db()
 
-# ----------------- 📱 RENDER WEBHOOK SERVER -----------------
+# ----------------- 📱 RENDER WEBHOOK SERVER (SUPER POWERFUL) -----------------
 @app.route('/')
 def home():
     return "SMM Bot Server is Alive and 24/7 Running!", 200
@@ -209,28 +210,57 @@ def home():
 @app.route('/sms-webhook', methods=['POST', 'GET'])
 def sms_webhook():
     try:
-        data = request.form if request.form else (request.json if request.json else request.args)
-        sms_text = data.get('text', '') or data.get('message', '') or data.get('msg', '') or str(data)
+        sms_text = ""
+        if request.args.get('text'):
+            sms_text = request.args.get('text')
+        elif request.args.get('msg'):
+            sms_text = request.args.get('msg')
+        elif request.form.get('text'):
+            sms_text = request.form.get('text')
+        elif request.form.get('msg'):
+            sms_text = request.form.get('msg')
+        elif request.json and 'text' in request.json:
+            sms_text = request.json['text']
+        elif request.json and 'msg' in request.json:
+            sms_text = request.json['msg']
+        else:
+            sms_text = request.get_data(as_text=True)
 
+        sms_text = urllib.parse.unquote(sms_text)
+
+        # 🔴 বিকাশ ট্রানজেকশন ফিল্টার (DH382Y2SP2 ফরম্যাট সাপোর্ট)
         if "bKash" in sms_text or "TrxID" in sms_text:
-            trx_match = re.search(r'TrxID\s+([A-Za-z0-9]+)', sms_text, re.IGNORECASE)
-            amt_match = re.search(r'Tk\s+([0-9,.]+)', sms_text, re.IGNORECASE)
+            trx_match = re.search(r'TrxID\s*:?\s*([A-Za-z0-9]+)', sms_text, re.IGNORECASE)
+            amt_match = re.search(r'Tk\s*:?\s*([0-9,.]+)', sms_text, re.IGNORECASE)
             if trx_match and amt_match:
                 txid = trx_match.group(1).strip()
                 amount = float(amt_match.group(1).replace(',', ''))
                 save_auto_sms_trx(txid, amount, "bKash")
+                
+                # 🔔 এডমিনকে সাথে সাথে এলার্ট মেসেজ পাঠানো
+                try:
+                    bot.send_message(ADMIN_ID, f"📩 <b>বিকাশ থেকে নতুন এসএমএস এসেছে!</b>\n\n💳 মেথড: <b>bKash</b>\n💵 পরিমাণ: <b>{amount:.2f} BDT</b>\n🆔 TxID: <code>{txid}</code>", parse_mode="HTML")
+                except Exception:
+                    pass
 
+        # 🔴 নগদ ট্রানজেকশন ফিল্টার
         elif "Nagad" in sms_text or "TxnID" in sms_text:
-            trx_match = re.search(r'TxnID:\s*([A-Za-z0-9]+)', sms_text, re.IGNORECASE)
-            amt_match = re.search(r'Amount:\s*Tk\s*([0-9,.]+)', sms_text, re.IGNORECASE)
+            trx_match = re.search(r'TxnID\s*:?\s*([A-Za-z0-9]+)', sms_text, re.IGNORECASE)
+            amt_match = re.search(r'(?:Amount\s*:?\s*Tk|Tk)\s*:?\s*([0-9,.]+)', sms_text, re.IGNORECASE)
             if trx_match and amt_match:
                 txid = trx_match.group(1).strip()
                 amount = float(amt_match.group(1).replace(',', ''))
                 save_auto_sms_trx(txid, amount, "Nagad")
+                
+                # 🔔 এডমিনকে সাথে সাথে এলার্ট মেসেজ পাঠানো
+                try:
+                    bot.send_message(ADMIN_ID, f"📩 <b>নগদ থেকে নতুন এসএমএস এসেছে!</b>\n\n💳 মেথড: <b>Nagad</b>\n💵 পরিমাণ: <b>{amount:.2f} BDT</b>\n🆔 TxID: <code>{txid}</code>", parse_mode="HTML")
+                except Exception:
+                    pass
 
         return jsonify({"status": "success"}), 200
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 400
+        return jsonify({"status": "success", "error": str(e)}), 200
 
 def run_flask():
     port = int(os.environ.get('PORT', 5000))
