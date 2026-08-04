@@ -73,13 +73,11 @@ def init_db():
             status TEXT DEFAULT 'Unclaimed'
         )
     """)
-    # 🔴 আলাদা প্ল্যাটফর্ম টেবিল
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS main_categories (
             name TEXT PRIMARY KEY
         )
     """)
-    # 🔴 আলাদা সাব-ক্যাটাগরি টেবিল
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS sub_categories (
             main_name TEXT,
@@ -87,7 +85,6 @@ def init_db():
             PRIMARY KEY (main_name, sub_name)
         )
     """)
-    # 🔴 সার্ভিস টেবিল
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS services (
             main_cat TEXT,
@@ -113,22 +110,21 @@ def init_db():
             value TEXT
         )
     """)
-    cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('profit_margin', '1.10')")
     conn.commit()
     conn.close()
 
-def get_profit_margin():
+def get_setting(key):
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
-    cursor.execute("SELECT value FROM settings WHERE key = 'profit_margin'")
+    cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
     row = cursor.fetchone()
     conn.close()
-    return float(row[0]) if row else 1.10
+    return row[0] if row else None
 
-def set_profit_margin(margin_value):
+def set_setting(key, value):
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
-    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('profit_margin', ?)", (str(margin_value),))
+    cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
     conn.commit()
     conn.close()
 
@@ -173,7 +169,7 @@ def get_user_stats(chat_id):
     conn.close()
     return total_orders, total_payments
 
-# --- জয়েন চ্যানেল ফাংশনসমূহ (FIXED) ---
+# --- জয়েন চ্যানেল ফাংশনসমূহ ---
 def add_force_channel(channel_id, channel_name, invite_link):
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
@@ -201,11 +197,13 @@ def check_user_joined_all(chat_id):
     unjoined = []
     for ch in channels:
         try:
-            member = bot.get_chat_member(ch[0], chat_id)
-            if member.status in ['left', 'kicked']:
+            ch_id = ch[0].strip()
+            if not ch_id.startswith('@') and not ch_id.startswith('-100'):
+                ch_id = '@' + ch_id
+            member = bot.get_chat_member(ch_id, chat_id)
+            if member.status not in ['member', 'administrator', 'creator']:
                 unjoined.append(ch)
         except Exception:
-            # যদি বোট মেম্বারশিপ চেক না করতে পারে, কাস্টমারকে ব্লক করবে না
             pass
     return unjoined
 
@@ -310,7 +308,7 @@ def get_user_payments(chat_id):
 
 init_db()
 
-# ----------------- 📱 RENDER WEBHOOK SERVER -----------------
+# ----------------- 📱 RENDER WEBHOOK SERVER (FRAUD-PROOF) -----------------
 @app.route('/')
 def home():
     return "SMM Bot Server is Alive and 24/7 Running!", 200
@@ -318,22 +316,14 @@ def home():
 @app.route('/sms-webhook', methods=['POST', 'GET'])
 def sms_webhook():
     try:
-        sms_text = ""
-        if request.args.get('text'):
-            sms_text = request.args.get('text')
-        elif request.args.get('msg'):
-            sms_text = request.args.get('msg')
-        elif request.form.get('text'):
-            sms_text = request.form.get('text')
-        elif request.form.get('msg'):
-            sms_text = request.form.get('msg')
-        elif request.json and 'text' in request.json:
-            sms_text = request.json['text']
-        elif request.json and 'msg' in request.json:
-            sms_text = request.json['msg']
-        else:
-            sms_text = request.get_data(as_text=True)
+        data = request.form if request.form else (request.json if request.json else request.args)
+        
+        # 🔴 সিকিউরিটি ফিল্টার: পার্সোনাল নাম্বার (বন্ধুর ফোন) থেকে মেসেজ ফরোয়ার্ড করলে ব্লগ করবে
+        sender = data.get('from', '') or data.get('sender', '') or data.get('number', '') or ''
+        if re.search(r'^(?:\+88)?01[3-9]\d{8}$', str(sender).strip()):
+            return jsonify({"status": "ignored", "reason": "Personal sender forwarding not allowed"}), 200
 
+        sms_text = data.get('text', '') or data.get('message', '') or data.get('msg', '') or str(data)
         sms_text = urllib.parse.unquote(sms_text)
 
         if "bKash" in sms_text or "TrxID" in sms_text:
@@ -392,14 +382,13 @@ def admin_panel_command(message):
 
     btn1 = types.InlineKeyboardButton("➕ মেইন প্ল্যাটফর্ম যোগ", callback_data="admin_add_main_cat")
     btn2 = types.InlineKeyboardButton("📂 সাব-ক্যাটাগরি যোগ", callback_data="admin_add_sub_cat")
-    btn3 = types.InlineKeyboardButton("🛒 সার্ভিস যোগ করুন", callback_data="admin_add_service_start")
+    btn3 = types.InlineKeyboardButton("🛒 নতুন সার্ভিস যোগ", callback_data="admin_add_service_start")
     btn4 = types.InlineKeyboardButton("🔍 ইউজার ইনফো ও কয়েন", callback_data="admin_user_info_start")
-    btn5 = types.InlineKeyboardButton("📈 প্রফিট সেট", callback_data="admin_set_profit_start")
+    btn5 = types.InlineKeyboardButton("🖼️ স্টার্ট পিকচার সেট", callback_data="admin_set_start_photo")
     btn6 = types.InlineKeyboardButton("📢 জয়েন চ্যানেল সেটআপ", callback_data="admin_force_channel_menu")
     btn7 = types.InlineKeyboardButton("🗑️ একটি সার্ভিস ডিলিট", callback_data="admin_delete_single_service_start")
     btn8 = types.InlineKeyboardButton("💥 সকল সার্ভিস ডিলিট", callback_data="admin_clear_services_confirm")
 
-    # 🔴 ২ টি করে বাটন পাশে পাশে সাজানো
     markup = create_2col_markup([btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8])
 
     bot.send_message(
@@ -411,7 +400,24 @@ def admin_panel_command(message):
         parse_mode="HTML"
     )
 
-# --- 1. শুধু মেইন প্ল্যাটফর্ম তৈরি করা ---
+# --- স্টার্ট ছবি সেটিং ---
+@bot.callback_query_handler(func=lambda call: call.data == "admin_set_start_photo")
+def admin_set_start_photo(call):
+    if call.message.chat.id != ADMIN_ID: return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(ADMIN_ID, "🖼️ <b>বোট স্টার্ট করার সময় যে পিকচারটি দেখাতে চান, সেটির ফটো লিংক (Image URL) পাঠান:</b>\n(অথবা `0` পাঠালে পিকচার রিমুভ হয়ে যাবে)", parse_mode="HTML")
+    bot.register_next_step_handler(msg, save_start_photo)
+
+def save_start_photo(message):
+    url = message.text.strip()
+    if url == "0":
+        set_setting("start_photo", "")
+        bot.send_message(ADMIN_ID, "✅ <b>স্টার্ট পিকচার রিমুভ করা হয়েছে!</b>", parse_mode="HTML")
+    else:
+        set_setting("start_photo", url)
+        bot.send_message(ADMIN_ID, "✅ <b>নতুন স্টার্ট পিকচার সফলভাবে সেট হয়েছে!</b>", parse_mode="HTML")
+
+# --- 1. মেইন প্ল্যাটফর্ম যোগ ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_main_cat")
 def admin_add_main_cat_start(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -424,7 +430,7 @@ def admin_save_main_cat(message):
     add_main_category(mcat_name)
     bot.send_message(ADMIN_ID, f"✅ <b>মেইন প্ল্যাটফর্ম [{mcat_name}] সফলভাবে তৈরি হয়েছে!</b>", parse_mode="HTML")
 
-# --- 2. শুধু সাব-ক্যাটাগরি তৈরি করা ---
+# --- 2. সাব-ক্যাটাগরি যোগ ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_sub_cat")
 def admin_add_sub_cat_start(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -453,7 +459,7 @@ def admin_save_sub_cat(message, mcat_name):
     add_sub_category(mcat_name, sub_name)
     bot.send_message(ADMIN_ID, f"✅ <b>[{mcat_name}] -> [{sub_name}] সাব-ক্যাটাগরি তৈরি হয়েছে!</b>", parse_mode="HTML")
 
-# --- 3. আসল সার্ভিস যোগ করা ---
+# --- 3. আসল সার্ভিস যোগ (সরাসরি কয়েন প্রাইজ) ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_service_start")
 def admin_add_service_start(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -497,53 +503,49 @@ def admin_step_get_choice_id(call):
 def admin_step_get_api_id(message, mcat_name, scat_name):
     id_bot = message.text.strip()
     msg = bot.send_message(ADMIN_ID, f"🔌 ওয়েবসাইটের <b>আসল API ID</b> টি কত? (যেমন: 19138):", parse_mode="HTML")
-    bot.register_next_step_handler(msg, admin_step_get_usd_cost, mcat_name, scat_name, id_bot)
+    bot.register_next_step_handler(msg, admin_step_get_direct_coin, mcat_name, scat_name, id_bot)
 
-def admin_step_get_usd_cost(message, mcat_name, scat_name, id_bot):
+def admin_step_get_direct_coin(message, mcat_name, scat_name, id_bot):
     api_id = message.text.strip()
-    msg = bot.send_message(ADMIN_ID, "💵 ওয়েবসাইটের <b>ডলার প্রাইজ (USD Cost)</b> কত? (যেমন: 0.0725 লিখে পাঠান):", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, "🪙 <b>প্রতি ১০০০ (1000) কোয়ান্টিটির জন্য কাস্টমার থেকে কত কয়েন (Coin) কাটবেন?</b>\n(যেমন: 10, 15 বা 50 লিখে পাঠান):", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_step_get_min_qty, mcat_name, scat_name, id_bot, api_id)
 
 def admin_step_get_min_qty(message, mcat_name, scat_name, id_bot, api_id):
     try:
-        usd_cost = float(message.text.strip())
+        coin_price_per_1k = float(message.text.strip())
     except ValueError:
-        bot.send_message(ADMIN_ID, "❌ ভুল ডলার দাম!")
+        bot.send_message(ADMIN_ID, "❌ ভুল কয়েন দাম!")
         return
 
     msg = bot.send_message(ADMIN_ID, "🔢 এই সার্ভিসের জন্য <b>সর্বনিম্ন কোয়ান্টিটি (Min Qty)</b> কত দেবেন? (যেমন: 10, 100 বা 1000):", parse_mode="HTML")
-    bot.register_next_step_handler(msg, admin_step_get_name, mcat_name, scat_name, id_bot, api_id, usd_cost)
+    bot.register_next_step_handler(msg, admin_step_get_name, mcat_name, scat_name, id_bot, api_id, coin_price_per_1k)
 
-def admin_step_get_name(message, mcat_name, scat_name, id_bot, api_id, usd_cost):
+def admin_step_get_name(message, mcat_name, scat_name, id_bot, api_id, coin_price_per_1k):
     try:
         min_qty = int(message.text.strip())
     except ValueError:
         min_qty = 10
 
     msg = bot.send_message(ADMIN_ID, "📌 <b>সার্ভিসটির নাম লিখে পাঠান:</b>", parse_mode="HTML")
-    bot.register_next_step_handler(msg, admin_step_save_service, mcat_name, scat_name, id_bot, api_id, usd_cost, min_qty)
+    bot.register_next_step_handler(msg, admin_step_save_service, mcat_name, scat_name, id_bot, api_id, coin_price_per_1k, min_qty)
 
-def admin_step_save_service(message, mcat_name, scat_name, id_bot, api_id, usd_cost, min_qty):
+def admin_step_save_service(message, mcat_name, scat_name, id_bot, api_id, coin_price_per_1k, min_qty):
     name = message.text.strip()
-    price_per_1k = usd_cost * USD_TO_BDT
 
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
     cursor.execute("INSERT OR REPLACE INTO services (main_cat, sub_cat, id_bot, api_id, name, price_per_1k, min_qty) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                   (mcat_name, scat_name, id_bot, api_id, name, price_per_1k, min_qty))
+                   (mcat_name, scat_name, id_bot, api_id, name, coin_price_per_1k, min_qty))
     conn.commit()
     conn.close()
 
-    margin = get_profit_margin()
-    display_price = price_per_1k * margin
-
     bot.send_message(
         ADMIN_ID,
-        f"✅ <b>সার্ভিসটি সফলভাবে যুক্ত করা হয়েছে!</b>\n\n"
+        f"✅ <b>সার্ভিসটি সফলভাবে ৩-স্তরে যুক্ত করা হয়েছে!</b>\n\n"
         f"📁 <b>প্ল্যাটফর্ম:</b> <code>{mcat_name}</code>\n"
         f"📂 <b>সাব-ক্যাটাগরি:</b> <code>{scat_name}</code>\n"
         f"🆔 <b>চয়েস ID:</b> <b>{id_bot}</b> | 🔌 <b>API ID:</b> <b>{api_id}</b>\n"
-        f"💰 <b>কাস্টমার দাম (১০০০টি):</b> <b>{display_price:.2f} Coin</b>\n"
+        f"💰 <b>কাস্টমার কয়েন দাম (১০০০টি):</b> <b>{coin_price_per_1k:.2f} Coin</b>\n"
         f"🔢 <b>সর্বনিম্ন অর্ডার:</b> <b>{min_qty} টি</b>\n"
         f"📌 <b>নাম:</b> <b>{name}</b>",
         parse_mode="HTML"
@@ -580,7 +582,7 @@ def admin_del_select_id(call):
     raw_data = call.data.replace("delscat_", "")
     mcat_name, scat_name = raw_data.split("___")
 
-    msg = bot.send_message(ADMIN_ID, f"🗑️ <b>[{scat_name}]</b> সাব-ক্যাটাগরির যে সার্ভিসটি ডিলিট করবেন তার <b>কাস্টমার চয়েস ID (যেমন: 1, 2)</b> লিখে পাঠান:", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, f"🗑️ <b>[{scat_name}]</b> এর যে সার্ভিসটি ডিলিট করবেন তার <b>কাস্টমার চয়েস ID (যেমন: 1, 2)</b> লিখে পাঠান:", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_process_delete_service, mcat_name, scat_name)
 
 def admin_process_delete_service(message, mcat_name, scat_name):
@@ -603,13 +605,13 @@ def admin_force_channel_menu(call):
     if len(channels) < 4:
         markup.add(types.InlineKeyboardButton("➕ নতুন চ্যানেল যোগ করুন", callback_data="addchan_start"))
 
-    bot.send_message(ADMIN_ID, f"📢 <b>বর্তমান ফোর্সমস্ট জয়েন চ্যানেল সংখ্যা: {len(channels)}/4</b>\n\nনিচের বাটন দিয়ে যোগ বা রিমুভ করুন:", reply_markup=markup, parse_mode="HTML")
+    bot.send_message(ADMIN_ID, f"📢 <b>বর্তমান ফোর্সমস্ট জয়েন চ্যানেল সংখ্যা: {len(channels)}/4</b>\n\n(⚠️ মনে রাখবেন: বোটকে চ্যানেলে এডমিন বানিয়ে রাখতে হবে!)\nনিচের বাটন দিয়ে যোগ বা রিমুভ করুন:", reply_markup=markup, parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda call: call.data == "addchan_start")
 def addchan_start(call):
     if call.message.chat.id != ADMIN_ID: return
     bot.answer_callback_query(call.id)
-    msg = bot.send_message(ADMIN_ID, "📢 <b>চ্যানেলের ইউজারনেম বা ID লিখে পাঠান:</b>\n(যেমন: `@MyChannel` বা `-10012345678`):", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, "📢 <b>চ্যানেলের ইউজারনেম লিখে পাঠান:</b>\n(যেমন: `@MyChannel`):", parse_mode="HTML")
     bot.register_next_step_handler(msg, addchan_get_link)
 
 def addchan_get_link(message):
@@ -729,24 +731,6 @@ def admin_save_set_balance(message, target_user):
     except Exception:
         pass
 
-@bot.callback_query_handler(func=lambda call: call.data == "admin_set_profit_start")
-def admin_set_profit_start(call):
-    if call.message.chat.id != ADMIN_ID: return
-    bot.answer_callback_query(call.id)
-    msg = bot.send_message(ADMIN_ID, "📈 <b>শতকরা কত % লাভ রাখতে চান?</b>\n(যেমন: 15 বা 20 লিখে পাঠান):", parse_mode="HTML")
-    bot.register_next_step_handler(msg, admin_step_profit_save)
-
-def admin_step_profit_save(message):
-    try:
-        percentage = float(message.text.strip())
-    except ValueError:
-        bot.send_message(ADMIN_ID, "❌ ভুল পার্সেন্টেজ!")
-        return
-
-    margin_value = 1.0 + (percentage / 100.0)
-    set_profit_margin(margin_value)
-    bot.send_message(ADMIN_ID, f"📈 <b>গ্লোবাল প্রফিট মার্জিন সফলভাবে {percentage}% সেট করা হয়েছে!</b> ✅", parse_mode="HTML")
-
 @bot.callback_query_handler(func=lambda call: call.data == "admin_users_list")
 def admin_users_list_callback(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -831,7 +815,15 @@ def send_main_menu(chat_id, first_name):
         f"হ্যালো <b>{safe_name}</b>, আশা করি ভালো আছেন! আমাদের বোটে আপনাকে আন্তরিক অভিনন্দন। এখানে আপনি বাজারের সেরা ও দ্রুততম সোশ্যাল মিডিয়া সার্ভিসগুলো পাবেন। 🚀\n\n"
         f"🛒 <b>অর্ডার শুরু করতে নিচের বাটনগুলো ব্যবহার করুন!</b> 👇"
     )
-    bot.send_message(chat_id, welcome_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
+    
+    start_photo = get_setting("start_photo")
+    if start_photo:
+        try:
+            bot.send_photo(chat_id, start_photo, caption=welcome_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
+        except Exception:
+            bot.send_message(chat_id, welcome_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
+    else:
+        bot.send_message(chat_id, welcome_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
 
 # 🔴 ৩-স্তরের কাস্টমার ব্রাউজিং মেনু (2 Columns Side-by-Side)
 @bot.message_handler(func=lambda message: True)
@@ -940,7 +932,7 @@ def handle_menu_buttons(message):
         )
         bot.send_message(chat_id, support_text, parse_mode="HTML")
 
-# 🔴 ২য় লেভেল: সাব-ক্যাটাগরি হ্যান্ডলিং
+# 🔴 ২য় লেভেল: সাব-ক্যাটাগরি হ্যান্ডলিং (2 Columns Side-by-Side)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("mcat_"))
 def handle_main_category_selection(call):
     chat_id = call.message.chat.id
@@ -973,12 +965,10 @@ def handle_sub_category_selection(call):
         bot.send_message(chat_id, "❌ <b>এই সাব-ক্যাটাগরিতে এখনো কোনো সার্ভিস যুক্ত করা হয়নি।</b>", parse_mode="HTML")
         return
 
-    margin = get_profit_margin()
     response_text = "✅ <b>𝗣𝗥𝗘𝗠𝗜𝗨𝗠 𝗦𝗘𝗥𝗩𝗜𝗖𝗘</b> 👑\n\n✨ ✅নিচের সার্ভিস দেখে অর্ডার করুন ✨⚡\n\n"
     
     for service in services_list:
-        price_val = service.get("price_per_1k", 0.0)
-        display_price = (price_val if price_val is not None else 0.0) * margin
+        display_price = service.get("price_per_1k", 0.0)
 
         response_text += (
             f"🆔 <b>{service['id']}</b> ⎯ {service['name']}\n"
@@ -1030,10 +1020,7 @@ def get_quantity(message, selected_service, link):
         return
 
     bdt_rate_per_1k = selected_service.get("price_per_1k", 0.0) or 10.0
-    margin = get_profit_margin()
-    
-    final_rate_per_1k = bdt_rate_per_1k * margin
-    estimated_cost = (quantity / 1000) * final_rate_per_1k
+    estimated_cost = (quantity / 1000) * bdt_rate_per_1k
 
     if estimated_cost < 1.0:
         estimated_cost = 1.0
