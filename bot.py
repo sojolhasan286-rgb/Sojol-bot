@@ -25,6 +25,7 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "users.db")
 
+# 🔴 বাটন পাশাপাশি ২টি করে সাজানোর হেল্পার ফাংশন (Side-by-Side 2 Columns)
 def create_2col_markup(button_list):
     markup = types.InlineKeyboardMarkup()
     for i in range(0, len(button_list), 2):
@@ -240,7 +241,7 @@ def check_user_joined_all(chat_id):
             if member.status not in ['member', 'administrator', 'creator']:
                 unjoined.append(ch)
         except Exception:
-            unjoined.append(ch)
+            pass
     return unjoined
 
 # --- ৩-লেভেল ক্যাটাগরি ডাটাবেজ হেল্পার ---
@@ -363,13 +364,22 @@ def sms_webhook():
         
         full_text = urllib.parse.unquote(" ".join(raw_parts)).replace('+', ' ')
 
-        # 🔴 TrxID & Amount ক্যাচিং (DH434PXZJH / DH454OVECP 100% ম্যাচ করবে)
         trx_match = re.search(r'(?:TrxID|TxnID|TxID|Trx ID|Txn ID)\s*:?\s*([A-Za-z0-9]{8,14})', full_text, re.IGNORECASE)
         amt_match = re.search(r'(?:Tk|Tk\.|Amount)\s*:?\s*([0-9]+(?:\.[0-9]+)?)', full_text, re.IGNORECASE)
 
-        if trx_match and amt_match:
+        if not trx_match:
+            possible_codes = re.findall(r'\b[A-Za-z0-9]{8,12}\b', full_text)
+            for code in possible_codes:
+                if any(c.isdigit() for c in code) and any(c.isalpha() for c in code):
+                    txid = code.strip().upper()
+                    break
+            else:
+                txid = None
+        else:
             txid = trx_match.group(1).strip().upper()
-            amount = float(amt_match.group(1))
+
+        if txid:
+            amount = float(amt_match.group(1)) if amt_match else 10.0
             method = "Nagad" if ("Nagad" in full_text or "TxnID" in full_text) else "bKash"
 
             save_auto_sms_trx(txid, amount, method)
@@ -706,7 +716,7 @@ def admin_process_delete_service(message, mcat_name, scat_name):
     delete_single_service(mcat_name, scat_name, id_bot)
     bot.send_message(message.chat.id, f"✅ <b>সার্ভিস ID [{id_bot}] ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
 
-# ---------------- 5. ৪টি চ্যানেল জয়েন সেটআপ (FIXED) ----------------
+# ---------------- 5. ৪টি চ্যানেল জয়েন সেটআপ ----------------
 @bot.callback_query_handler(func=lambda call: call.data == "admin_force_channel_menu")
 def admin_force_channel_menu(call):
     if not is_admin(call.message.chat.id): return
@@ -727,7 +737,7 @@ def admin_force_channel_menu(call):
 def addchan_start(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "📢 <b>চ্যানেলের ইউজারনেম বা আইডি লিখে পাঠান:</b>\n(যেমন: `@MyChannelName` বা `-10012345678`):", parse_mode="HTML")
+    msg = bot.send_message(call.message.chat.id, "📢 <b>চ্যানেলের ইউজারনেম লিখে পাঠান:</b>\n(যেমন: `@MyChannelName`):", parse_mode="HTML")
     bot.register_next_step_handler(msg, addchan_get_link)
 
 def addchan_get_link(message):
@@ -968,7 +978,7 @@ def handle_menu_buttons(message):
     elif text == "🛒 নতুন অর্ডার":
         main_cats = get_main_categories()
         if not main_cats:
-            bot.send_message(chat_id, "❌ <b>বর্তমানে কোনো সার্ভিস যুক্ত করা নেই।</b>", parse_mode="HTML")
+            bot.send_message(chat_id, "❌ <b>বর্তমানে কোনো সার্ভিস যুক্ত করা নেই।</b>\n\nএডমিন প্যানেল (/admin) থেকে সার্ভিস যোগ করুন।", parse_mode="HTML")
             return
 
         btns = [types.InlineKeyboardButton(f"✨ {mc}", callback_data=f"mcat_{mc}") for mc in main_cats]
@@ -1034,7 +1044,7 @@ def handle_menu_buttons(message):
             status_icon = "⏳" if p[3] == "Pending" else "✅"
             response += (
                 f"<b>{idx}. {p[0]} ডিপোজিট</b>\n"
-                f"💵 <b>পরিমাণ:</b> <b>{p[1]:.2f} Coin</b> | 🆔 <b>TxID:</b> <code>{p[2]}</code>\n"
+                f"💵 পরিমাণ: <b>{p[1]:.2f} Coin</b> | 🆔 <b>TxID:</b> <code>{p[2]}</code>\n"
                 f"🚦 <b>স্ট্যাটাস:</b> {status_icon} <b>{p[3]}</b>\n"
                 f"⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯\n"
             )
@@ -1045,8 +1055,8 @@ def handle_menu_buttons(message):
             "┏━━━━━━━━━━━━━━━━━━┓\n"
             "       📞   <b>এডমিন সাপোর্ট</b>   📞\n"
             "┗━━━━━━━━━━━━━━━━━━┛\n\n"
-            "💬 <b>টেলিগ্রাম এডমিন:</b> @Mr_Sojol_Ceo\n"
-            "📱 <b>হোয়াটসঅ্যাপ:</b> +8801925263571\n\n"
+            "💬  টেলিগ্রাম এডমিন: @Mr_Sojol_Ceo\n"
+            "📱 হোয়াটসঅ্যাপ: +8801925263571\n\n"
             "পেমেন্ট এড করা বা অর্ডার সংক্রান্ত যেকোনো সমস্যার জন্য সরাসরি এডমিনের সাথে যোগাযোগ করুন।"
         )
         bot.send_message(chat_id, support_text, parse_mode="HTML")
@@ -1227,7 +1237,7 @@ def confirm_order_final(message, selected_service, link, quantity, estimated_cos
                 bot.send_message(chat_id, success_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
             else:
                 error_msg = api_res.get("error", "Unknown SMM Server error") if isinstance(api_res, dict) else "Invalid SMM Server response"
-                bot.send_message(chat_id, f"❌ <b>Failed to order. Server Response:</b> {error_msg}", reply_markup=get_main_mode="HTML")
+                bot.send_message(chat_id, f"❌ <b>Failed to order. Server Response:</b> {error_msg}", reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
                 
         except Exception:
             bot.send_message(chat_id, "❌ <b>Connection error with SMM site. Please try again.</b>", reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
