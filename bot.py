@@ -25,7 +25,6 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "users.db")
 
-# 🔴 বাটন পাশাপাশি ২টি করে সাজানোর হেল্পার ফাংশন
 def create_2col_markup(button_list):
     markup = types.InlineKeyboardMarkup()
     for i in range(0, len(button_list), 2):
@@ -241,7 +240,7 @@ def check_user_joined_all(chat_id):
             if member.status not in ['member', 'administrator', 'creator']:
                 unjoined.append(ch)
         except Exception:
-            pass
+            unjoined.append(ch)
     return unjoined
 
 # --- ৩-লেভেল ক্যাটাগরি ডাটাবেজ হেল্পার ---
@@ -318,17 +317,18 @@ def save_auto_sms_trx(txid, amount, method):
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
     cursor.execute("INSERT OR IGNORE INTO auto_transactions (txid, amount, method, status) VALUES (?, ?, ?, 'Unclaimed')",
-                   (txid, amount, method))
+                   (txid.strip().upper(), amount, method))
     conn.commit()
     conn.close()
 
 def claim_auto_trx(txid):
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
-    cursor.execute("SELECT amount, method, status FROM auto_transactions WHERE txid = ?", (txid,))
+    clean_txid = txid.strip().upper()
+    cursor.execute("SELECT amount, method, status FROM auto_transactions WHERE UPPER(txid) = ?", (clean_txid,))
     row = cursor.fetchone()
     if row and row[2] == 'Unclaimed':
-        cursor.execute("UPDATE auto_transactions SET status = 'Claimed' WHERE txid = ?", (txid,))
+        cursor.execute("UPDATE auto_transactions SET status = 'Claimed' WHERE UPPER(txid) = ?", (clean_txid,))
         conn.commit()
         conn.close()
         return float(row[0]), row[1]
@@ -353,44 +353,29 @@ def home():
 @app.route('/sms-webhook', methods=['POST', 'GET'])
 def sms_webhook():
     try:
-        data_sources = []
-        if request.args: data_sources.append(str(request.args.to_dict()))
-        if request.form: data_sources.append(str(request.form.to_dict()))
-        if request.json: data_sources.append(str(request.json))
-        data_sources.append(request.get_data(as_text=True))
+        raw_parts = []
+        if request.args: raw_parts.extend([str(v) for v in request.args.values()])
+        if request.form: raw_parts.extend([str(v) for v in request.form.values()])
+        if request.json and isinstance(request.json, dict): raw_parts.extend([str(v) for v in request.json.values()])
         
-        full_payload = " ".join(data_sources)
-        sms_text = urllib.parse.unquote(full_payload)
+        raw_data = request.get_data(as_text=True)
+        if raw_data: raw_parts.append(raw_data)
+        
+        full_text = urllib.parse.unquote(" ".join(raw_parts)).replace('+', ' ')
 
-        # 🔴 পার্সোনাল নাম্বার থেকে ফরোয়ার্ড করলে ব্লক করবে
-        sender_match = re.search(r'(?:from|sender|number)\D*(\+?8801[3-9]\d{8}|01[3-9]\d{8})', sms_text, re.IGNORECASE)
-        if sender_match:
-            return jsonify({"status": "ignored", "reason": "Personal sender blocked"}), 200
+        # 🔴 TrxID & Amount ক্যাচিং (DH434PXZJH / DH454OVECP 100% ম্যাচ করবে)
+        trx_match = re.search(r'(?:TrxID|TxnID|TxID|Trx ID|Txn ID)\s*:?\s*([A-Za-z0-9]{8,14})', full_text, re.IGNORECASE)
+        amt_match = re.search(r'(?:Tk|Tk\.|Amount)\s*:?\s*([0-9]+(?:\.[0-9]+)?)', full_text, re.IGNORECASE)
 
-        # 🔴 আল্ট্রা-পাওয়ারফুল TrxID এবং টাকার পরিমাণ ক্যাচিং
-        trx_match = re.search(r'(?:TrxID|TxnID|TxID|Trx ID|Txn ID)\s*:?\s*([A-Za-z0-9]{8,14})', sms_text, re.IGNORECASE)
-        amt_match = re.search(r'(?:Tk|Tk\.|Amount)\s*:?\s*([0-9]+(?:\.[0-9]+)?)', sms_text, re.IGNORECASE)
-
-        if not trx_match:
-            # ব্যাকআপ ফিল্টার: মেসেজে ৮-১২ অক্ষরের ইংরেজি কোড খোঁজা (যেমন: DH454OVECP)
-            possible_codes = re.findall(r'\b[A-Za-z0-9]{8,12}\b', sms_text)
-            for code in possible_codes:
-                if any(c.isdigit() for c in code) and any(c.isalpha() for c in code):
-                    txid = code.strip()
-                    break
-            else:
-                txid = None
-        else:
-            txid = trx_match.group(1).strip()
-
-        if txid:
-            amount = float(amt_match.group(1)) if amt_match else 10.0
-            method = "Nagad" if ("Nagad" in sms_text or "TxnID" in sms_text) else "bKash"
+        if trx_match and amt_match:
+            txid = trx_match.group(1).strip().upper()
+            amount = float(amt_match.group(1))
+            method = "Nagad" if ("Nagad" in full_text or "TxnID" in full_text) else "bKash"
 
             save_auto_sms_trx(txid, amount, method)
 
             try:
-                bot.send_message(MAIN_ADMIN_ID, f"📩 <b>{method} SMS Received!</b>\n\n💵 Amount: <b>{amount:.2f} Coin</b>\n🆔 TxID: <code>{txid}</code>", parse_mode="HTML")
+                bot.send_message(MAIN_ADMIN_ID, f"📩 <b>{method} Auto SMS Received!</b>\n\n💵 Amount: <b>{amount:.2f} BDT</b>\n🆔 TrxID: <code>{txid}</code>", parse_mode="HTML")
             except Exception:
                 pass
 
@@ -672,7 +657,7 @@ def admin_step_save_service(message, mcat_name, scat_name, id_bot, api_id, usd_c
 
     bot.send_message(
         message.chat.id,
-        f"✅ <b>সার্ভিসটি সফলভাবে যুক্ত করা হয়েছে!</b>\n\n"
+        f"✅ <b>সার্ভিসটি সফলভাবে ৩-স্তরে যুক্ত করা হয়েছে!</b>\n\n"
         f"📁 <b>প্ল্যাটফর্ম:</b> <code>{mcat_name}</code>\n"
         f"📂 <b>সাব-ক্যাটাগরি:</b> <code>{scat_name}</code>\n"
         f"🆔 <b>চয়েস ID:</b> <b>{id_bot}</b> | 🔌 <b>API ID:</b> <b>{api_id}</b>\n"
@@ -742,7 +727,7 @@ def admin_force_channel_menu(call):
 def addchan_start(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "📢 <b>চ্যানেলের ইউজারনেম লিখে পাঠান:</b>\n(যেমন: `@MyChannelName`):", parse_mode="HTML")
+    msg = bot.send_message(call.message.chat.id, "📢 <b>চ্যানেলের ইউজারনেম বা আইডি লিখে পাঠান:</b>\n(যেমন: `@MyChannelName` বা `-10012345678`):", parse_mode="HTML")
     bot.register_next_step_handler(msg, addchan_get_link)
 
 def addchan_get_link(message):
@@ -983,7 +968,7 @@ def handle_menu_buttons(message):
     elif text == "🛒 নতুন অর্ডার":
         main_cats = get_main_categories()
         if not main_cats:
-            bot.send_message(chat_id, "❌ <b>বর্তমানে কোনো সার্ভিস যুক্ত করা নেই।</b>\n\nএডমিন প্যানেল (/admin) থেকে সার্ভিস যোগ করুন।", parse_mode="HTML")
+            bot.send_message(chat_id, "❌ <b>বর্তমানে কোনো সার্ভিস যুক্ত করা নেই।</b>", parse_mode="HTML")
             return
 
         btns = [types.InlineKeyboardButton(f"✨ {mc}", callback_data=f"mcat_{mc}") for mc in main_cats]
@@ -1066,7 +1051,7 @@ def handle_menu_buttons(message):
         )
         bot.send_message(chat_id, support_text, parse_mode="HTML")
 
-# 🔴 ২য় লেভেল: সাব-ক্যাটাগরি হ্যান্ডলিং (In-Place Edit Message - No duplicate messages)
+# 🔴 ২য় লেভেল: সাব-ক্যাটাগরি হ্যান্ডলিং
 @bot.callback_query_handler(func=lambda call: call.data.startswith("mcat_"))
 def handle_main_category_selection(call):
     chat_id = call.message.chat.id
@@ -1141,7 +1126,7 @@ def get_service_id(message, services_list):
 
     selected_service = next((s for s in services_list if str(s["id"]) == user_input), None)
     if not selected_service:
-        bot.send_message(chat_id, "🛑 <b>ভুল আইডি! আবার নতুন অর্ডার বাটনে ক্লিক করে চেষ্টা করুন।</b>", parse_mode="HTML")
+        bot.send_message(chat_id, "🛑 <b>ভুল আইডি! আবার চেষ্টা করুন।</b>", parse_mode="HTML")
         return
 
     msg = bot.send_message(chat_id, f"🔗 <b>আপনার অর্ডারের লিংকটি এখানে পেস্ট করে পাঠান:</b>\n\n⚠️ (সর্বনিম্ন কোয়ান্টিটি: {selected_service['min_qty']} টি)", parse_mode="HTML")
@@ -1242,7 +1227,7 @@ def confirm_order_final(message, selected_service, link, quantity, estimated_cos
                 bot.send_message(chat_id, success_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
             else:
                 error_msg = api_res.get("error", "Unknown SMM Server error") if isinstance(api_res, dict) else "Invalid SMM Server response"
-                bot.send_message(chat_id, f"❌ <b>Failed to order. Server Response:</b> {error_msg}", reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
+                bot.send_message(chat_id, f"❌ <b>Failed to order. Server Response:</b> {error_msg}", reply_markup=get_main_mode="HTML")
                 
         except Exception:
             bot.send_message(chat_id, "❌ <b>Connection error with SMM site. Please try again.</b>", reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
