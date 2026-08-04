@@ -12,7 +12,9 @@ from telebot import types
 
 # ----------------- আপনার বোটের মূল সেটিংস -----------------
 BOT_TOKEN = "8899197686:AAGq1I806XgwIzNjdyQada9HykdyGciBO8g"
-MAIN_ADMIN_ID = 6851638362  # মূল এডমিন আইডি
+SMMSUN_API_URL = "https://socialpanel.pro/api/v2"
+SMMSUN_API_KEY = "14f3163c337f51c7c90c6232d9428bc2"
+MAIN_ADMIN_ID = 6851638362 
 
 USD_TO_BDT = 120.0     # ১ ডলার = ১২০ কয়েন (১ কয়েন = ১ টাকা)
 # --------------------------------------------------------
@@ -23,7 +25,7 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "users.db")
 
-# 🔴 বাটন পাশাপাশি ২টি করে সাজানোর হেল্পার ফাংশন (Side-by-Side 2 Columns)
+# 🔴 বাটন পাশাপাশি ২টি করে সাজানোর হেল্পার ফাংশন
 def create_2col_markup(button_list):
     markup = types.InlineKeyboardMarkup()
     for i in range(0, len(button_list), 2):
@@ -131,16 +133,14 @@ def set_setting(key, value):
     conn.commit()
     conn.close()
 
-# 🔌 ডায়নামিক SMM API সেটিংস
 def get_smm_api_url():
     val = get_setting("smm_api_url")
-    return val if val else "https://socialpanel.pro/api/v2"
+    return val if val else SMMSUN_API_URL
 
 def get_smm_api_key():
     val = get_setting("smm_api_key")
-    return val if val else "14f3163c337f51c7c90c6232d9428bc2"
+    return val if val else SMMSUN_API_KEY
 
-# 👑 এডমিন যাচাইকরণ
 def is_admin(chat_id):
     if chat_id == MAIN_ADMIN_ID:
         return True
@@ -345,7 +345,7 @@ def get_user_payments(chat_id):
 
 init_db()
 
-# ----------------- 📱 FRAUD-PROOF RENDER WEBHOOK -----------------
+# ----------------- 📱 100% CATCH ALL SMS WEBHOOK -----------------
 @app.route('/')
 def home():
     return "SMM Bot Server is Alive and 24/7 Running!", 200
@@ -353,39 +353,46 @@ def home():
 @app.route('/sms-webhook', methods=['POST', 'GET'])
 def sms_webhook():
     try:
-        data = request.form if request.form else (request.json if request.json else request.args)
+        data_sources = []
+        if request.args: data_sources.append(str(request.args.to_dict()))
+        if request.form: data_sources.append(str(request.form.to_dict()))
+        if request.json: data_sources.append(str(request.json))
+        data_sources.append(request.get_data(as_text=True))
         
-        # 🔴 সিকিউরিটি ফিল্টার: পার্সোনাল মোবাইল নাম্বার (বন্ধুর ফোন) থেকে মেসেজ ফরোয়ার্ড করলে ১০০% ব্লক করবে
-        sender = data.get('from', '') or data.get('sender', '') or data.get('number', '') or ''
-        if re.search(r'^(?:\+88)?01[3-9]\d{8}$', str(sender).strip()):
-            return jsonify({"status": "ignored", "reason": "Personal sender forwarding blocked"}), 200
+        full_payload = " ".join(data_sources)
+        sms_text = urllib.parse.unquote(full_payload)
 
-        sms_text = data.get('text', '') or data.get('message', '') or data.get('msg', '') or str(data)
-        sms_text = urllib.parse.unquote(sms_text)
+        # 🔴 পার্সোনাল নাম্বার থেকে ফরোয়ার্ড করলে ব্লক করবে
+        sender_match = re.search(r'(?:from|sender|number)\D*(\+?8801[3-9]\d{8}|01[3-9]\d{8})', sms_text, re.IGNORECASE)
+        if sender_match:
+            return jsonify({"status": "ignored", "reason": "Personal sender blocked"}), 200
 
-        if "bKash" in sms_text or "TrxID" in sms_text:
-            trx_match = re.search(r'TrxID\s*:?\s*([A-Za-z0-9]{8,14})', sms_text, re.IGNORECASE)
-            amt_match = re.search(r'Tk\s*:?\s*([0-9,.]+)', sms_text, re.IGNORECASE)
-            if trx_match and amt_match:
-                txid = trx_match.group(1).strip()
-                amount = float(amt_match.group(1).replace(',', ''))
-                save_auto_sms_trx(txid, amount, "bKash")
-                try:
-                    bot.send_message(MAIN_ADMIN_ID, f"📩 <b>bKash SMS Received!</b>\n\n💵 Amount: <b>{amount:.2f} Coin</b>\n🆔 TxID: <code>{txid}</code>", parse_mode="HTML")
-                except Exception:
-                    pass
+        # 🔴 আল্ট্রা-পাওয়ারফুল TrxID এবং টাকার পরিমাণ ক্যাচিং
+        trx_match = re.search(r'(?:TrxID|TxnID|TxID|Trx ID|Txn ID)\s*:?\s*([A-Za-z0-9]{8,14})', sms_text, re.IGNORECASE)
+        amt_match = re.search(r'(?:Tk|Tk\.|Amount)\s*:?\s*([0-9]+(?:\.[0-9]+)?)', sms_text, re.IGNORECASE)
 
-        elif "Nagad" in sms_text or "TxnID" in sms_text:
-            trx_match = re.search(r'TxnID\s*:?\s*([A-Za-z0-9]{8,14})', sms_text, re.IGNORECASE)
-            amt_match = re.search(r'(?:Amount\s*:?\s*Tk|Tk)\s*:?\s*([0-9,.]+)', sms_text, re.IGNORECASE)
-            if trx_match and amt_match:
-                txid = trx_match.group(1).strip()
-                amount = float(amt_match.group(1).replace(',', ''))
-                save_auto_sms_trx(txid, amount, "Nagad")
-                try:
-                    bot.send_message(MAIN_ADMIN_ID, f"📩 <b>Nagad SMS Received!</b>\n\n💵 Amount: <b>{amount:.2f} Coin</b>\n🆔 TxID: <code>{txid}</code>", parse_mode="HTML")
-                except Exception:
-                    pass
+        if not trx_match:
+            # ব্যাকআপ ফিল্টার: মেসেজে ৮-১২ অক্ষরের ইংরেজি কোড খোঁজা (যেমন: DH454OVECP)
+            possible_codes = re.findall(r'\b[A-Za-z0-9]{8,12}\b', sms_text)
+            for code in possible_codes:
+                if any(c.isdigit() for c in code) and any(c.isalpha() for c in code):
+                    txid = code.strip()
+                    break
+            else:
+                txid = None
+        else:
+            txid = trx_match.group(1).strip()
+
+        if txid:
+            amount = float(amt_match.group(1)) if amt_match else 10.0
+            method = "Nagad" if ("Nagad" in sms_text or "TxnID" in sms_text) else "bKash"
+
+            save_auto_sms_trx(txid, amount, method)
+
+            try:
+                bot.send_message(MAIN_ADMIN_ID, f"📩 <b>{method} SMS Received!</b>\n\n💵 Amount: <b>{amount:.2f} Coin</b>\n🆔 TxID: <code>{txid}</code>", parse_mode="HTML")
+            except Exception:
+                pass
 
         return jsonify({"status": "success"}), 200
     except Exception as e:
@@ -503,7 +510,7 @@ def remove_co_admin_save(message):
     except ValueError:
         bot.send_message(MAIN_ADMIN_ID, "❌ ভুল ইউজার ID!")
 
-# --- স্টার্ট ডেসক্রিপশন সেটিং (Pre-Start Description Text) ---
+# --- স্টার্ট ডেসক্রিপশন সেটিং ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_set_start_photo")
 def admin_set_start_photo(call):
     if not is_admin(call.message.chat.id): return
@@ -524,7 +531,7 @@ def save_start_photo(message):
 def admin_set_welcome_text(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, "📝 <b>বোট স্টার্ট করার আগে/পরে প্রোফাইলে যে টেক্সট দেখাবে তা টাইপ করে পাঠান:</b>\n(রিসেট করতে `0` পাঠান)", parse_mode="HTML")
+    msg = bot.send_message(call.message.chat.id, "📝 <b>বোটের প্রোফাইল ডেসক্রিপশন টেক্সট টাইপ করে পাঠান:</b>\n(রিসেট করতে `0` পাঠান)", parse_mode="HTML")
     bot.register_next_step_handler(msg, save_welcome_text)
 
 def save_welcome_text(message):
@@ -534,13 +541,12 @@ def save_welcome_text(message):
         bot.send_message(message.chat.id, "✅ <b>ডেসক্রিপশন ডিফল্ট সেটিংয়ে ফিরে গেছে!</b>", parse_mode="HTML")
     else:
         set_setting("welcome_text", txt)
-        # 🔴 অফিশিয়াল টেলিগ্রাম বোট ডেসক্রিপশন আপডেট
         try:
             bot.set_my_description(txt)
             bot.set_my_short_description(txt)
         except Exception:
             pass
-        bot.send_message(message.chat.id, "✅ <b>নতুন প্রোফাইল ডেসক্রিপশন ও ওয়েলকাম টেক্সট সেভ হয়েছে!</b>", parse_mode="HTML")
+        bot.send_message(message.chat.id, "✅ <b>নতুন প্রোফাইল ডেসক্রিপশন সেভ হয়েছে!</b>", parse_mode="HTML")
 
 # --- 1. মেইন প্ল্যাটফর্ম যোগ ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_main_cat")
@@ -715,7 +721,7 @@ def admin_process_delete_service(message, mcat_name, scat_name):
     delete_single_service(mcat_name, scat_name, id_bot)
     bot.send_message(message.chat.id, f"✅ <b>সার্ভিস ID [{id_bot}] ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
 
-# ---------------- 5. ৪টি চ্যানেল জয়েন সেটআপ ----------------
+# ---------------- 5. ৪টি চ্যানেল জয়েন সেটআপ (FIXED) ----------------
 @bot.callback_query_handler(func=lambda call: call.data == "admin_force_channel_menu")
 def admin_force_channel_menu(call):
     if not is_admin(call.message.chat.id): return
@@ -1035,7 +1041,7 @@ def handle_menu_buttons(message):
     elif text == "📊 পেমেন্ট হিস্ট্রি":
         payments = get_user_payments(chat_id)
         if not payments:
-            bot.send_message(chat_id, "📭 <b>আপনার কোনো পেমেন্ট রেকর্ড নেই।</b>", parse_mode="HTML")
+            bot.send_message(chat_id, "📭  আপনার কোনো পেমেন্ট রেকর্ড নেই।")
             return
 
         response = "📊 <b>আপনার সর্বশেষ ১০টি পেমেন্ট রিকোয়েস্ট:</b>\n\n"
