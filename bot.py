@@ -25,7 +25,7 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "users.db")
 
-# 🔴 বাটন পাশাপাশি ২ টি করে সাজানোর হেল্পার ফাংশন (Side-by-Side 2 Columns)
+# 🔴 বাটন পাশাপাশি ২টি করে সাজানোর হেল্পার ফাংশন (Side-by-Side 2 Columns)
 def create_2col_markup(button_list):
     markup = types.InlineKeyboardMarkup()
     for i in range(0, len(button_list), 2):
@@ -169,7 +169,7 @@ def get_user_stats(chat_id):
     conn.close()
     return total_orders, total_payments
 
-# --- জয়েন চ্যানেল ফাংশনসমূহ ---
+# --- জয়েন চ্যানেল ফাংশনসমূহ (FIXED) ---
 def add_force_channel(channel_id, channel_name, invite_link):
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
@@ -207,7 +207,7 @@ def check_user_joined_all(chat_id):
             pass
     return unjoined
 
-# --- ৩-লেভেল ক্যাটাগরি ও সার্ভিস ডাটাবেজ হেল্পার ---
+# --- ৩-লেভেল ক্যাটাগরি ডাটাবেজ হেল্পার ---
 def add_main_category(name):
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
@@ -318,7 +318,7 @@ def sms_webhook():
     try:
         data = request.form if request.form else (request.json if request.json else request.args)
         
-        # 🔴 সিকিউরিটি ফিল্টার: পার্সোনাল নাম্বার (বন্ধুর ফোন) থেকে মেসেজ ফরোয়ার্ড করলে ব্লগ করবে
+        # 🔴 পার্সোনাল নাম্বার থেকে ফরোয়ার্ড করা মেসেজ ব্লক করবে
         sender = data.get('from', '') or data.get('sender', '') or data.get('number', '') or ''
         if re.search(r'^(?:\+88)?01[3-9]\d{8}$', str(sender).strip()):
             return jsonify({"status": "ignored", "reason": "Personal sender forwarding not allowed"}), 200
@@ -382,14 +382,15 @@ def admin_panel_command(message):
 
     btn1 = types.InlineKeyboardButton("➕ মেইন প্ল্যাটফর্ম যোগ", callback_data="admin_add_main_cat")
     btn2 = types.InlineKeyboardButton("📂 সাব-ক্যাটাগরি যোগ", callback_data="admin_add_sub_cat")
-    btn3 = types.InlineKeyboardButton("🛒 নতুন সার্ভিস যোগ", callback_data="admin_add_service_start")
+    btn3 = types.InlineKeyboardButton("🛒 সার্ভিস যোগ করুন", callback_data="admin_add_service_start")
     btn4 = types.InlineKeyboardButton("🔍 ইউজার ইনফো ও কয়েন", callback_data="admin_user_info_start")
     btn5 = types.InlineKeyboardButton("🖼️ স্টার্ট পিকচার সেট", callback_data="admin_set_start_photo")
-    btn6 = types.InlineKeyboardButton("📢 জয়েন চ্যানেল সেটআপ", callback_data="admin_force_channel_menu")
-    btn7 = types.InlineKeyboardButton("🗑️ একটি সার্ভিস ডিলিট", callback_data="admin_delete_single_service_start")
-    btn8 = types.InlineKeyboardButton("💥 সকল সার্ভিস ডিলিট", callback_data="admin_clear_services_confirm")
+    btn6 = types.InlineKeyboardButton("📝 ওয়েলকাম টেক্সট এডিট", callback_data="admin_set_welcome_text")
+    btn7 = types.InlineKeyboardButton("📢 জয়েন চ্যানেল সেটআপ", callback_data="admin_force_channel_menu")
+    btn8 = types.InlineKeyboardButton("🗑️ একটি সার্ভিস ডিলিট", callback_data="admin_delete_single_service_start")
+    btn9 = types.InlineKeyboardButton("💥 সকল সার্ভিস ডিলিট", callback_data="admin_clear_services_confirm")
 
-    markup = create_2col_markup([btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8])
+    markup = create_2col_markup([btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9])
 
     bot.send_message(
         ADMIN_ID,
@@ -400,12 +401,12 @@ def admin_panel_command(message):
         parse_mode="HTML"
     )
 
-# --- স্টার্ট ছবি সেটিং ---
+# --- ওয়েলকাম টেক্সট ও ফটো সেটিং ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_set_start_photo")
 def admin_set_start_photo(call):
     if call.message.chat.id != ADMIN_ID: return
     bot.answer_callback_query(call.id)
-    msg = bot.send_message(ADMIN_ID, "🖼️ <b>বোট স্টার্ট করার সময় যে পিকচারটি দেখাতে চান, সেটির ফটো লিংক (Image URL) পাঠান:</b>\n(অথবা `0` পাঠালে পিকচার রিমুভ হয়ে যাবে)", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, "🖼️ <b>বোট স্টার্টের ফটো লিংক (Direct Image URL) দিন:</b>\n(যেমন: `https://i.ibb.co/xxxxx/image.jpg` বা রিমুভ করতে `0` পাঠান):", parse_mode="HTML")
     bot.register_next_step_handler(msg, save_start_photo)
 
 def save_start_photo(message):
@@ -415,7 +416,23 @@ def save_start_photo(message):
         bot.send_message(ADMIN_ID, "✅ <b>স্টার্ট পিকচার রিমুভ করা হয়েছে!</b>", parse_mode="HTML")
     else:
         set_setting("start_photo", url)
-        bot.send_message(ADMIN_ID, "✅ <b>নতুন স্টার্ট পিকচার সফলভাবে সেট হয়েছে!</b>", parse_mode="HTML")
+        bot.send_message(ADMIN_ID, "✅ <b>স্টার্ট পিকচার সফলভাবে সেট হয়েছে!</b>", parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_set_welcome_text")
+def admin_set_welcome_text(call):
+    if call.message.chat.id != ADMIN_ID: return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(ADMIN_ID, "📝 <b>বোট স্টার্ট করার সময় কাস্টমারকে কী মেসেজ দেখাবে তা টাইপ করে পাঠান:</b>\n(রিসেট করতে `0` পাঠান)", parse_mode="HTML")
+    bot.register_next_step_handler(msg, save_welcome_text)
+
+def save_welcome_text(message):
+    txt = message.text.strip()
+    if txt == "0":
+        set_setting("welcome_text", "")
+        bot.send_message(ADMIN_ID, "✅ <b>ওয়েলকাম টেক্সট ডিফল্ট সেটিংয়ে ফিরে গেছে!</b>", parse_mode="HTML")
+    else:
+        set_setting("welcome_text", txt)
+        bot.send_message(ADMIN_ID, "✅ <b>নতুন ওয়েলকাম টেক্সট সেভ হয়েছে!</b>", parse_mode="HTML")
 
 # --- 1. মেইন প্ল্যাটফর্ম যোগ ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_main_cat")
@@ -428,7 +445,7 @@ def admin_add_main_cat_start(call):
 def admin_save_main_cat(message):
     mcat_name = message.text.strip()
     add_main_category(mcat_name)
-    bot.send_message(ADMIN_ID, f"✅ <b>মেইন প্ল্যাটফর্ম [{mcat_name}] সফলভাবে তৈরি হয়েছে!</b>", parse_mode="HTML")
+    bot.send_message(ADMIN_ID, f"✅ <b>মেইন প্ল্যাটফর্ম [{mcat_name}] তৈরি হয়েছে!</b>", parse_mode="HTML")
 
 # --- 2. সাব-ক্যাটাগরি যোগ ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_sub_cat")
@@ -451,7 +468,7 @@ def admin_sub_cat_get_name(call):
     bot.answer_callback_query(call.id)
     mcat_name = call.data.replace("admsubsel_", "")
 
-    msg = bot.send_message(ADMIN_ID, f"✍️ <b>[{mcat_name}] প্ল্যাটফর্মের নতুন সাব-ক্যাটাগরির নাম লিখুন:</b>\n(যেমন: `TikTok View` বা `FB Like`)", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, f"✍️ <b>[{mcat_name}] এর নতুন সাব-ক্যাটাগরির নাম লিখুন:</b>\n(যেমন: `TikTok View` বা `FB Like`)", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_save_sub_cat, mcat_name)
 
 def admin_save_sub_cat(message, mcat_name):
@@ -459,7 +476,7 @@ def admin_save_sub_cat(message, mcat_name):
     add_sub_category(mcat_name, sub_name)
     bot.send_message(ADMIN_ID, f"✅ <b>[{mcat_name}] -> [{sub_name}] সাব-ক্যাটাগরি তৈরি হয়েছে!</b>", parse_mode="HTML")
 
-# --- 3. আসল সার্ভিস যোগ (সরাসরি কয়েন প্রাইজ) ---
+# --- 3. সার্ভিস যোগ ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_add_service_start")
 def admin_add_service_start(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -507,7 +524,7 @@ def admin_step_get_api_id(message, mcat_name, scat_name):
 
 def admin_step_get_direct_coin(message, mcat_name, scat_name, id_bot):
     api_id = message.text.strip()
-    msg = bot.send_message(ADMIN_ID, "🪙 <b>প্রতি ১০০০ (1000) কোয়ান্টিটির জন্য কাস্টমার থেকে কত কয়েন (Coin) কাটবেন?</b>\n(যেমন: 10, 15 বা 50 লিখে পাঠান):", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, "🪙 <b>প্রতি ১০০০টির জন্য কাস্টমার থেকে কত কয়েন (Coin) কাটবেন?</b>\n(যেমন: 10, 15 বা 50 লিখে পাঠান):", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_step_get_min_qty, mcat_name, scat_name, id_bot, api_id)
 
 def admin_step_get_min_qty(message, mcat_name, scat_name, id_bot, api_id):
@@ -529,23 +546,23 @@ def admin_step_get_name(message, mcat_name, scat_name, id_bot, api_id, coin_pric
     msg = bot.send_message(ADMIN_ID, "📌 <b>সার্ভিসটির নাম লিখে পাঠান:</b>", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_step_save_service, mcat_name, scat_name, id_bot, api_id, coin_price_per_1k, min_qty)
 
-def admin_step_save_service(message, mcat_name, scat_name, id_bot, api_id, coin_price_per_1k, min_qty):
+def admin_step_save_service(message, mcat_name, scat_name, id_bot, api_id, usd_cost, min_qty):
     name = message.text.strip()
 
     conn = sqlite3.connect(DB_FILE, timeout=30)
     cursor = conn.cursor()
     cursor.execute("INSERT OR REPLACE INTO services (main_cat, sub_cat, id_bot, api_id, name, price_per_1k, min_qty) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                   (mcat_name, scat_name, id_bot, api_id, name, coin_price_per_1k, min_qty))
+                   (mcat_name, scat_name, id_bot, api_id, name, usd_cost, min_qty))
     conn.commit()
     conn.close()
 
     bot.send_message(
         ADMIN_ID,
-        f"✅ <b>সার্ভিসটি সফলভাবে ৩-স্তরে যুক্ত করা হয়েছে!</b>\n\n"
+        f"✅ <b>সার্ভিসটি সফলভাবে যুক্ত করা হয়েছে!</b>\n\n"
         f"📁 <b>প্ল্যাটফর্ম:</b> <code>{mcat_name}</code>\n"
         f"📂 <b>সাব-ক্যাটাগরি:</b> <code>{scat_name}</code>\n"
         f"🆔 <b>চয়েস ID:</b> <b>{id_bot}</b> | 🔌 <b>API ID:</b> <b>{api_id}</b>\n"
-        f"💰 <b>কাস্টমার কয়েন দাম (১০০০টি):</b> <b>{coin_price_per_1k:.2f} Coin</b>\n"
+        f"💰 <b>কয়েন প্রাইজ (১০০০টি):</b> <b>{usd_cost:.2f} Coin</b>\n"
         f"🔢 <b>সর্বনিম্ন অর্ডার:</b> <b>{min_qty} টি</b>\n"
         f"📌 <b>নাম:</b> <b>{name}</b>",
         parse_mode="HTML"
@@ -582,15 +599,15 @@ def admin_del_select_id(call):
     raw_data = call.data.replace("delscat_", "")
     mcat_name, scat_name = raw_data.split("___")
 
-    msg = bot.send_message(ADMIN_ID, f"🗑️ <b>[{scat_name}]</b> এর যে সার্ভিসটি ডিলিট করবেন তার <b>কাস্টমার চয়েস ID (যেমন: 1, 2)</b> লিখে পাঠান:", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, f"🗑️ <b>[{scat_name}]</b> এর চয়েস ID (যেমন: 1, 2) লিখে পাঠান:", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_process_delete_service, mcat_name, scat_name)
 
 def admin_process_delete_service(message, mcat_name, scat_name):
     id_bot = message.text.strip()
     delete_single_service(mcat_name, scat_name, id_bot)
-    bot.send_message(ADMIN_ID, f"✅ <b>[{mcat_name}] -> [{scat_name}] থেকে সার্ভিস ID [{id_bot}] ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
+    bot.send_message(ADMIN_ID, f"✅ <b>সার্ভিস ID [{id_bot}] ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
 
-# ---------------- 5. ৪টি চ্যানেল জয়েন সেটআপ ----------------
+# ---------------- 5. ৪টি চ্যানেল জয়েন সেটআপ (FIXED) ----------------
 @bot.callback_query_handler(func=lambda call: call.data == "admin_force_channel_menu")
 def admin_force_channel_menu(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -605,29 +622,29 @@ def admin_force_channel_menu(call):
     if len(channels) < 4:
         markup.add(types.InlineKeyboardButton("➕ নতুন চ্যানেল যোগ করুন", callback_data="addchan_start"))
 
-    bot.send_message(ADMIN_ID, f"📢 <b>বর্তমান ফোর্সমস্ট জয়েন চ্যানেল সংখ্যা: {len(channels)}/4</b>\n\n(⚠️ মনে রাখবেন: বোটকে চ্যানেলে এডমিন বানিয়ে রাখতে হবে!)\nনিচের বাটন দিয়ে যোগ বা রিমুভ করুন:", reply_markup=markup, parse_mode="HTML")
+    bot.send_message(ADMIN_ID, f"📢 <b>ফোর্সমস্ট জয়েন চ্যানেল তালিকা ({len(channels)}/4):</b>\n(⚠️ বোটকে চ্যানেলে এডমিন বানিয়ে রাখবেন!)\n\nনিচের বাটন দিয়ে যোগ বা রিমুভ করুন:", reply_markup=markup, parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda call: call.data == "addchan_start")
 def addchan_start(call):
     if call.message.chat.id != ADMIN_ID: return
     bot.answer_callback_query(call.id)
-    msg = bot.send_message(ADMIN_ID, "📢 <b>চ্যানেলের ইউজারনেম লিখে পাঠান:</b>\n(যেমন: `@MyChannel`):", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, "📢 <b>চ্যানেলের ইউজারনেম লিখে পাঠান:</b>\n(যেমন: `@MyChannelName`):", parse_mode="HTML")
     bot.register_next_step_handler(msg, addchan_get_link)
 
 def addchan_get_link(message):
     ch_id = message.text.strip()
-    msg = bot.send_message(ADMIN_ID, f"🔗 <b>চ্যানেলটির ইনভাইট লিংক পেস্ট করুন:</b>\n(যেমন: `https://t.me/MyChannel`)", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, f"🔗 <b>চ্যানেলটির লিংক (Invite Link) পেস্ট করুন:</b>\n(যেমন: `https://t.me/MyChannelName`)", parse_mode="HTML")
     bot.register_next_step_handler(msg, addchan_get_name, ch_id)
 
 def addchan_get_name(message, ch_id):
     link = message.text.strip()
-    msg = bot.send_message(ADMIN_ID, "📌 <b>চ্যানেলটির সুন্দর নাম লিখে পাঠান:</b>", parse_mode="HTML")
+    msg = bot.send_message(ADMIN_ID, "📌 <b>বাটনে দেখানোর জন্য চ্যানেলের নাম লিখে পাঠান:</b>", parse_mode="HTML")
     bot.register_next_step_handler(msg, addchan_save, ch_id, link)
 
 def addchan_save(message, ch_id, link):
     ch_name = message.text.strip()
     add_force_channel(ch_id, ch_name, link)
-    bot.send_message(ADMIN_ID, f"✅ <b>চ্যানেল [{ch_name}] সফলভাবে যুক্ত হয়েছে!</b>", parse_mode="HTML")
+    bot.send_message(ADMIN_ID, f"✅ <b>চ্যানেল [{ch_name}] যুক্ত হয়েছে!</b>", parse_mode="HTML")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("delchan_"))
 def delchan_process(call):
@@ -635,9 +652,9 @@ def delchan_process(call):
     bot.answer_callback_query(call.id)
     ch_id = call.data.replace("delchan_", "")
     delete_force_channel(ch_id)
-    bot.send_message(ADMIN_ID, "✅ <b>চ্যানেলটি ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
+    bot.send_message(ADMIN_ID, "✅ <b>চ্যানেলটি রিমুভ করা হয়েছে!</b>", parse_mode="HTML")
 
-# ---------------- 6. ইউজার ইনফো ও ব্যালেন্স এডিট ----------------
+# ---------------- 6. ইউজার ইনফো ও কয়েন এডিট ----------------
 @bot.callback_query_handler(func=lambda call: call.data == "admin_user_info_start")
 def admin_user_info_start(call):
     if call.message.chat.id != ADMIN_ID: return
@@ -781,7 +798,7 @@ def enforce_force_join(chat_id):
         bot.send_message(
             chat_id,
             "⚠️ <b>বট ব্যবহার করতে নিচের চ্যানেলগুলোতে জয়েন হওয়া বাধ্যতামূলক!</b>\n\n"
-            "জয়েন শেষ করে <b>'✅ জয়েন সম্পন্ন করেছি'</b> বাটনে চাপ দিন:",
+            " জয়েন শেষ করে <b>'✅ জয়েন সম্পন্ন করেছি'</b> বাটনে চাপ দিন:",
             reply_markup=markup,
             parse_mode="HTML"
         )
@@ -803,18 +820,21 @@ def start_command(message):
     chat_id = message.chat.id
     add_user(chat_id)
     if enforce_force_join(chat_id):
-        bot.send_message(chat_id, "⚙️ Loading...", reply_markup=get_main_menu_markup(chat_id))
         send_main_menu(chat_id, message.from_user.first_name)
 
 def send_main_menu(chat_id, first_name):
     safe_name = "ইউজার" if not first_name else first_name.replace("<", "&lt;").replace(">", "&gt;")
 
-    welcome_text = (
-        f"⚡✅<b>আমাদের প্রিমিয়াম SMM বোটে স্বাগতম!</b> 🥰\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"হ্যালো <b>{safe_name}</b>, আশা করি ভালো আছেন! আমাদের বোটে আপনাকে আন্তরিক অভিনন্দন। এখানে আপনি বাজারের সেরা ও দ্রুততম সোশ্যাল মিডিয়া সার্ভিসগুলো পাবেন। 🚀\n\n"
-        f"🛒 <b>অর্ডার শুরু করতে নিচের বাটনগুলো ব্যবহার করুন!</b> 👇"
-    )
+    custom_welcome = get_setting("welcome_text")
+    if custom_welcome:
+        welcome_text = custom_welcome.replace("{name}", safe_name)
+    else:
+        welcome_text = (
+            f"⚡✅<b>আমাদের প্রিমিয়াম SMM বোটে স্বাগতম!</b> 🥰\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"হ্যালো <b>{safe_name}</b>, আশা করি ভালো আছেন! আমাদের বোটে আপনাকে আন্তরিক অভিনন্দন। এখানে আপনি বাজারের সেরা ও দ্রুততম সোশ্যাল মিডিয়া সার্ভিসগুলো পাবেন। 🚀\n\n"
+            f"🛒 <b>অর্ডার শুরু করতে নিচের বাটনগুলো ব্যবহার করুন!</b> 👇"
+        )
     
     start_photo = get_setting("start_photo")
     if start_photo:
@@ -825,7 +845,7 @@ def send_main_menu(chat_id, first_name):
     else:
         bot.send_message(chat_id, welcome_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
 
-# 🔴 ৩-স্তরের কাস্টমার ব্রাউজিং মেনু (2 Columns Side-by-Side)
+# 🔴 ৩-স্তরের কাস্টমার ব্রাউজিং মেনু (In-Place Message Edit)
 @bot.message_handler(func=lambda message: True)
 def handle_menu_buttons(message):
     chat_id = message.chat.id
@@ -932,23 +952,43 @@ def handle_menu_buttons(message):
         )
         bot.send_message(chat_id, support_text, parse_mode="HTML")
 
-# 🔴 ২য় লেভেল: সাব-ক্যাটাগরি হ্যান্ডলিং (2 Columns Side-by-Side)
+# 🔴 ২য় লেভেল: সাব-ক্যাটাগরি হ্যান্ডলিং (In-Place Edit Message - No duplicate messages)
 @bot.callback_query_handler(func=lambda call: call.data.startswith("mcat_"))
 def handle_main_category_selection(call):
     chat_id = call.message.chat.id
+    message_id = call.message.message_id
     bot.answer_callback_query(call.id)
     
     mcat_name = call.data.replace("mcat_", "")
     sub_cats = get_sub_categories(mcat_name)
 
     if not sub_cats:
-        bot.send_message(chat_id, "❌ <b>এই প্ল্যাটফর্মে এখনো কোনো সাব-ক্যাটাগরি যুক্ত করা হয়নি।</b>", parse_mode="HTML")
+        bot.answer_callback_query(call.id, "❌ এই প্ল্যাটফর্মে কোনো সাব-ক্যাটাগরি নেই!", show_alert=True)
         return
 
     btns = [types.InlineKeyboardButton(f"📂 {sc}", callback_data=f"scat_{mcat_name}___{sc}") for sc in sub_cats]
+    btns.append(types.InlineKeyboardButton("⬅️ ব্যাক (মেইন প্যানেল)", callback_data="back_to_main_platforms"))
     markup = create_2col_markup(btns)
 
-    bot.send_message(chat_id, f"📂 <b>[{mcat_name}] ক্যাটাগরি বেছে নিন:</b>", reply_markup=markup, parse_mode="HTML")
+    try:
+        bot.edit_message_text(f"📂 <b>[{mcat_name}] সাব-ক্যাটাগরি বেছে নিন:</b>", chat_id=chat_id, message_id=message_id, reply_markup=markup, parse_mode="HTML")
+    except Exception:
+        bot.send_message(chat_id, f"📂 <b>[{mcat_name}] সাব-ক্যাটাগরি বেছে নিন:</b>", reply_markup=markup, parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data == "back_to_main_platforms")
+def back_to_main_platforms_callback(call):
+    chat_id = call.message.chat.id
+    message_id = call.message.message_id
+    bot.answer_callback_query(call.id)
+    
+    main_cats = get_main_categories()
+    btns = [types.InlineKeyboardButton(f"✨ {mc}", callback_data=f"mcat_{mc}") for mc in main_cats]
+    markup = create_2col_markup(btns)
+
+    try:
+        bot.edit_message_text("💸 <b>আমাদের সার্ভিস প্ল্যাটফর্ম নির্বাচন করুন:</b>", chat_id=chat_id, message_id=message_id, reply_markup=markup, parse_mode="HTML")
+    except Exception:
+        bot.send_message(chat_id, "💸 <b>আমাদের সার্ভিস প্ল্যাটফর্ম নির্বাচন করুন:</b>", reply_markup=markup, parse_mode="HTML")
 
 # 🔴 ৩য় লেভেল: সার্ভিস লিস্ট হ্যান্ডলিং
 @bot.callback_query_handler(func=lambda call: call.data.startswith("scat_"))
