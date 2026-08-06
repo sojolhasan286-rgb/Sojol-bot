@@ -11,13 +11,10 @@ from flask import Flask, request, jsonify
 from telebot import types
 
 # ----------------- আপনার বোটের মূল সেটিংস -----------------
-BOT_TOKEN = "8899197686:AAGq1I806XgwIzNjdyQada9HykdyGciBO8g"
+BOT_TOKEN = "8386397372:AAG0giAEyymw58ClpPl4QJXmjBkRA9FAfGw"
 SMMSUN_API_URL = "https://socialpanel.pro/api/v2"
 SMMSUN_API_KEY = "14f3163c337f51c7c90c6232d9428bc2"
 MAIN_ADMIN_ID = 6851638362 
-
-# 🔒 আপনার বোটের জন্য সেট করা পাসওয়ার্ড (টোকেন)
-SMS_WEBHOOK_TOKEN = "MonirulSecuresmS_983172"
 
 USD_TO_BDT = 120.0     # ১ ডলার = ১২০ কয়েন (১ কয়েন = ১ টাকা)
 # --------------------------------------------------------
@@ -27,9 +24,6 @@ app = Flask(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "users.db")
-
-# ভুয়া TrxID স্প্যাম প্রতিরোধ করার জন্য মেমরি ট্র্যাকার
-FAILED_ATTEMPTS = {}
 
 # 🔴 বাটন পাশাপাশি ২টি করে সাজানোর হেল্পার ফাংশন
 def create_2col_markup(button_list):
@@ -63,7 +57,8 @@ def init_db():
                 chat_id INTEGER,
                 service_name TEXT,
                 quantity INTEGER,
-                cost REAL
+                cost REAL,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
         cursor.execute("""
@@ -73,7 +68,8 @@ def init_db():
                 method TEXT,
                 amount REAL,
                 txid TEXT,
-                status TEXT DEFAULT 'Pending'
+                status TEXT DEFAULT 'Pending',
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
         cursor.execute("""
@@ -121,6 +117,17 @@ def init_db():
                 value TEXT
             )
         """)
+        
+        # পূর্বের ডাটাবেজ থাকলে টাইমস্ট্যাম্প মাইগ্রেশন রান করা
+        try:
+            cursor.execute("ALTER TABLE orders ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+        try:
+            cursor.execute("ALTER TABLE payments ADD COLUMN timestamp DATETIME DEFAULT CURRENT_TIMESTAMP")
+        except sqlite3.OperationalError:
+            pass
+            
         conn.commit()
 
 def get_setting(key):
@@ -231,7 +238,8 @@ def check_user_joined_all(chat_id):
             if member.status not in ['member', 'administrator', 'creator']:
                 unjoined.append(ch)
         except Exception:
-            pass
+            # বোট যদি অ্যাডমিন না থাকে তবুও মেম্বারশিপ চেক করার চেষ্টা করা হবে
+            unjoined.append(ch)
     return unjoined
 
 # --- ৩-লেভেল ক্যাটাগরি ডাটাবেজ হেল্পার ---
@@ -248,6 +256,14 @@ def get_main_categories():
         rows = cursor.fetchall()
         return [r[0] for r in rows]
 
+def delete_main_category(name):
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM main_categories WHERE name = ?", (name,))
+        cursor.execute("DELETE FROM sub_categories WHERE main_name = ?", (name,))
+        cursor.execute("DELETE FROM services WHERE main_cat = ?", (name,))
+        conn.commit()
+
 def add_sub_category(main_name, sub_name):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
         cursor = conn.cursor()
@@ -260,6 +276,13 @@ def get_sub_categories(main_cat):
         cursor.execute("SELECT sub_name FROM sub_categories WHERE main_name = ?", (main_cat,))
         rows = cursor.fetchall()
         return [r[0] for r in rows]
+
+def delete_sub_category(main_name, sub_name):
+    with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM sub_categories WHERE main_name = ? AND sub_name = ?", (main_name, sub_name))
+        cursor.execute("DELETE FROM services WHERE main_cat = ? AND sub_cat = ?", (main_name, sub_name))
+        conn.commit()
 
 def get_services_by_sub_cat(main_cat, sub_cat):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
@@ -326,34 +349,19 @@ init_db()
 def home():
     return "SMM Bot Server is Alive and 24/7 Running!", 200
 
-# 🔒 সিকিউরিটি টোকেন যুক্ত রুট
-@app.route('/sms-webhook/<token>', methods=['POST', 'GET'])
-def secure_sms_webhook(token):
-    # টোকেন ভেরিফাই করে ফেক রিকোয়েস্ট ব্লক
-    if token != SMS_WEBHOOK_TOKEN:
-        return jsonify({"status": "unauthorized"}), 403
-
+@app.route('/sms-webhook', methods=['POST', 'GET'])
+def sms_webhook():
     try:
         raw_parts = []
-        sender_id = ""
-
-        if request.args:
-            raw_parts.extend([str(v) for v in request.args.values()])
-            sender_id = request.args.get('sender', request.args.get('from', ''))
-        if request.form:
-            raw_parts.extend([str(v) for v in request.form.values()])
-            sender_id = request.form.get('sender', request.form.get('from', sender_id))
-        if request.json and isinstance(request.json, dict):
-            raw_parts.extend([str(v) for v in request.json.values()])
-            sender_id = request.json.get('sender', request.json.get('from', sender_id))
+        if request.args: raw_parts.extend([str(v) for v in request.args.values()])
+        if request.form: raw_parts.extend([str(v) for v in request.form.values()])
+        if request.json and isinstance(request.json, dict): raw_parts.extend([str(v) for v in request.json.values()])
         
         raw_data = request.get_data(as_text=True)
-        if raw_data:
-            raw_parts.append(raw_data)
+        if raw_data: raw_parts.append(raw_data)
         
         full_text = urllib.parse.unquote(" ".join(raw_parts)).replace('+', ' ')
 
-        # ট্রানজেকশন আইডি এবং অ্যামাউন্ট পার্সিং
         trx_match = re.search(r'(?:TrxID|TxnID|TxID|Trx ID|Txn ID)\s*:?\s*([A-Za-z0-9]{8,14})', full_text, re.IGNORECASE)
         amt_match = re.search(r'(?:Tk|Tk\.|Amount)\s*:?\s*([0-9]+(?:\.[0-9]+)?)', full_text, re.IGNORECASE)
 
@@ -370,7 +378,7 @@ def secure_sms_webhook(token):
 
         if txid:
             amount = float(amt_match.group(1)) if amt_match else 10.0
-            method = "Nagad" if ("Nagad" in full_text or "TxnID" in full_text or "16167" in sender_id) else "bKash"
+            method = "Nagad" if ("Nagad" in full_text or "TxnID" in full_text) else "bKash"
 
             save_auto_sms_trx(txid, amount, method)
 
@@ -381,7 +389,7 @@ def secure_sms_webhook(token):
 
         return jsonify({"status": "success"}), 200
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 200
+        return jsonify({"status": "success", "error": str(e)}), 200
 
 def run_flask():
     port = int(os.environ.get('PORT', 5000))
@@ -419,9 +427,12 @@ def admin_panel_command(message):
     btn8 = types.InlineKeyboardButton("🔌 SMM API এডিট", callback_data="admin_set_smm_api")
     btn9 = types.InlineKeyboardButton("👑 এডমিন যোগ/রিমুভ", callback_data="admin_manage_co_admins")
     btn10 = types.InlineKeyboardButton("🗑️ একটি সার্ভিস ডিলিট", callback_data="admin_delete_single_service_start")
-    btn11 = types.InlineKeyboardButton("💥 সকল সার্ভিস ডিলিট", callback_data="admin_clear_services_confirm")
+    btn11 = types.InlineKeyboardButton("🗑️ প্ল্যাটফর্ম ডিলিট", callback_data="admin_del_main_platform_start")
+    btn12 = types.InlineKeyboardButton("🗑️ সাব-ক্যাট ডিলিট", callback_data="admin_del_subcategory_start")
+    btn13 = types.InlineKeyboardButton("📊 লাইভ সেলস ও লাভ", callback_data="admin_live_stats")
+    btn14 = types.InlineKeyboardButton("💥 সকল সার্ভিস ডিলিট", callback_data="admin_clear_services_confirm")
 
-    markup = create_2col_markup([btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11])
+    markup = create_2col_markup([btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14])
 
     bot.send_message(
         message.chat.id,
@@ -432,7 +443,7 @@ def admin_panel_command(message):
         parse_mode="HTML"
     )
 
-# --- SMM API এডিট ---
+# --- SMM API এডিট ভ্যালিডেশন সহ ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_set_smm_api")
 def admin_set_smm_api(call):
     if not is_admin(call.message.chat.id): return
@@ -442,14 +453,117 @@ def admin_set_smm_api(call):
 
 def save_api_url(message):
     url = message.text.strip()
+    if not (url.startswith("http://") or url.startswith("https://")):
+        bot.send_message(message.chat.id, "❌ <b>ভুল ইউআরএল! লিংকটি অবশ্যই http:// বা https:// দিয়ে শুরু হতে হবে।</b> পুনরায় চেষ্টা করুন।")
+        return
     set_setting("smm_api_url", url)
     msg = bot.send_message(message.chat.id, "🔑 <b>এখন আপনার নতুন SMM API Key টি লিখে পাঠান:</b>", parse_mode="HTML")
     bot.register_next_step_handler(msg, save_api_key)
 
 def save_api_key(message):
     key = message.text.strip()
+    if len(key) < 10:
+        bot.send_message(message.chat.id, "❌ <b>ভুল বা অকার্যকর API Key!</b> অনুগ্রহ করে পুনরায় সঠিক কী দিয়ে চেষ্টা করুন।")
+        return
     set_setting("smm_api_key", key)
     bot.send_message(message.chat.id, "✅ <b>SMM API URL & Key সফলভাবে আপডেট করা হয়েছে!</b>", parse_mode="HTML")
+
+# --- এডমিন প্যানেল থেকে সিঙ্গেল প্ল্যাটফর্ম ডিলিট করা ---
+@bot.callback_query_handler(func=lambda call: call.data == "admin_del_main_platform_start")
+def admin_del_main_platform_start(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    main_cats = get_main_categories()
+    if not main_cats:
+        bot.send_message(call.message.chat.id, "❌ কোনো মেইন প্ল্যাটফর্ম পাওয়া যায়নি।")
+        return
+    btns = [types.InlineKeyboardButton(f"❌ {mc}", callback_data=f"delmainplatform_{mc}") for mc in main_cats]
+    markup = create_2col_markup(btns)
+    bot.send_message(call.message.chat.id, "🗑️ <b>কোন প্ল্যাটফর্মটি সম্পূর্ণ ডিলিট করতে চান?</b>\n(সতর্কতা: এর ভেতরের সকল সাব-ক্যাটাগরি ও সার্ভিস ডিলিট হয়ে যাবে!)", reply_markup=markup, parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("delmainplatform_"))
+def admin_del_main_platform_confirm(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    mcat_name = call.data.replace("delmainplatform_", "")
+    delete_main_category(mcat_name)
+    bot.send_message(call.message.chat.id, f"✅ <b>[{mcat_name}] প্ল্যাটফর্মটি এবং এর আওতাধীন সবকিছু ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
+
+# --- এডমিন প্যানেল থেকে সিঙ্গেল সাব-ক্যাটাগরি ডিলিট করা ---
+@bot.callback_query_handler(func=lambda call: call.data == "admin_del_subcategory_start")
+def admin_del_subcategory_start(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    main_cats = get_main_categories()
+    if not main_cats:
+        bot.send_message(call.message.chat.id, "❌ কোনো মেইন প্ল্যাটফর্ম পাওয়া যায়নি।")
+        return
+    btns = [types.InlineKeyboardButton(f"📁 {mc}", callback_data=f"delsubcatselectmc_{mc}") for mc in main_cats]
+    markup = create_2col_markup(btns)
+    bot.send_message(call.message.chat.id, "🗑️ <b>কোন প্ল্যাটফর্মের সাব-ক্যাটাগরি ডিলিট করবেন?</b>", reply_markup=markup, parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("delsubcatselectmc_"))
+def admin_del_subcategory_select_sub(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    mcat_name = call.data.replace("delsubcatselectmc_", "")
+    sub_cats = get_sub_categories(mcat_name)
+    if not sub_cats:
+        bot.send_message(call.message.chat.id, f"❌ [{mcat_name}] এ কোনো সাব-ক্যাটাগরি নেই।")
+        return
+    btns = [types.InlineKeyboardButton(f"❌ {sc}", callback_data=f"delsubcatconfirm_{mcat_name}___{sc}") for sc in sub_cats]
+    markup = create_2col_markup(btns)
+    bot.send_message(call.message.chat.id, f"🗑️ <b>[{mcat_name}] এর কোন সাব-ক্যাটাগরি ডিলিট করবেন?</b>\n(সতর্কতা: এর আওতাধীন সকল সার্ভিস ডিলিট হয়ে যাবে!)", reply_markup=markup, parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("delsubcatconfirm_"))
+def admin_del_subcategory_confirm(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    raw_data = call.data.replace("delsubcatconfirm_", "")
+    mcat_name, scat_name = raw_data.split("___")
+    delete_sub_category(mcat_name, scat_name)
+    bot.send_message(call.message.chat.id, f"✅ <b>[{mcat_name}] -> [{scat_name}] সাব-ক্যাটাগরি ও এর সার্ভিসগুলো ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
+
+# --- লাইভ সেলস ও লাভ ড্যাশবোর্ড ---
+@bot.callback_query_handler(func=lambda call: call.data == "admin_live_stats")
+def admin_live_stats_callback(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    try:
+        with sqlite3.connect(DB_FILE, timeout=30) as conn:
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT COUNT(*) FROM users")
+            total_users = cursor.fetchone()[0]
+            
+            cursor.execute("""
+                SELECT SUM(amount) FROM payments 
+                WHERE status = 'Approved' AND date(timestamp, 'localtime') = date('now', 'localtime')
+            """)
+            today_deposit = cursor.fetchone()[0]
+            today_deposit = today_deposit if today_deposit else 0.0
+            
+            cursor.execute("""
+                SELECT COUNT(*), SUM(cost) FROM orders 
+                WHERE date(timestamp, 'localtime') = date('now', 'localtime')
+            """)
+            row = cursor.fetchone()
+            today_orders_count = row[0] if row[0] else 0
+            today_orders_cost = row[1] if row[1] else 0.0
+            
+        stats_text = (
+            f"📊 <b>লাইভ সেলস ও লাভ রিপোর্ট (আজকের)</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👥 <b>মোট ইউজার সংখ্যা:</b> <b>{total_users} জন</b>\n"
+            f"💳 <b>আজকের মোট ডিপোজিট:</b> <b>{today_deposit:.2f} BDT/Coin</b>\n"
+            f"🛒 <b>আজকের মোট অর্ডার:</b> <b>{today_orders_count} টি</b>\n"
+            f"💰 <b>আজকের মোট সেলস ভ্যালু:</b> <b>{today_orders_cost:.2f} Coin</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"💡 <i>পেমেন্ট এবং অর্ডারের লাইভ ডাটাবেজ ট্র্যাক করে এই হিসেব দেখানো হচ্ছে।</i>"
+        )
+        bot.send_message(call.message.chat.id, stats_text, parse_mode="HTML")
+    except Exception as e:
+        bot.send_message(call.message.chat.id, f"❌ স্ট্যাটাস লোড করতে ত্রুটি: {str(e)}")
 
 # --- এডমিন ম্যানেজমেন্ট ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_manage_co_admins")
@@ -856,20 +970,29 @@ def admin_users_list_callback(call):
         response += f"👤 <b>ID:</b> <code>{u[0]}</code> | <b>ব্যালেন্স:</b> <b>{u[1]:.2f} Coin</b>\n"
     bot.send_message(call.message.chat.id, response, parse_mode="HTML")
 
+# --- সকল সার্ভিস একবারে ডিলিট করা (পাসওয়ার্ড প্রোটেকশন সহ) ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_clear_services_confirm")
 def admin_clear_services_callback(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    try:
-        with sqlite3.connect(DB_FILE, timeout=30) as conn:
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM services")
-            cursor.execute("DELETE FROM main_categories")
-            cursor.execute("DELETE FROM sub_categories")
-            conn.commit()
-        bot.send_message(call.message.chat.id, "🗑️ <b>সকল পুরাতন সার্ভিস ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
-    except Exception as e:
-        bot.send_message(call.message.chat.id, f"❌ Error: {str(e)}")
+    msg = bot.send_message(call.message.chat.id, "🔐 <b>সকল প্ল্যাটফর্ম ও সার্ভিস ডিলিট করতে ৫ ডিজিটের পিন (PIN) কোড দিন:</b>", parse_mode="HTML")
+    bot.register_next_step_handler(msg, process_clear_services_pin)
+
+def process_clear_services_pin(message):
+    pin = message.text.strip()
+    if pin == "12345":
+        try:
+            with sqlite3.connect(DB_FILE, timeout=30) as conn:
+                cursor = conn.cursor()
+                cursor.execute("DELETE FROM services")
+                cursor.execute("DELETE FROM main_categories")
+                cursor.execute("DELETE FROM sub_categories")
+                conn.commit()
+            bot.send_message(message.chat.id, "🗑️ <b>সফলভাবে সকল প্ল্যাটফর্ম, সাব-ক্যাটাগরি এবং সার্ভিস ডিলিট করা হয়েছে!</b>", parse_mode="HTML")
+        except Exception as e:
+            bot.send_message(message.chat.id, f"❌ Error: {str(e)}")
+    else:
+        bot.send_message(message.chat.id, "❌ <b>ভুল পিন কোড! ডিলিট করার অনুরোধ বাতিল করা হয়েছে।</b>", parse_mode="HTML")
 
 # ===================================================
 
@@ -887,7 +1010,8 @@ def get_main_menu_markup(chat_id):
 def enforce_force_join(chat_id):
     unjoined = check_user_joined_all(chat_id)
     if unjoined:
-        markup = types.InlineKeyboardMarkup(row_width=1)
+        markup = types.InlineKeyboardMarkup()
+        # ৪টি বা তার বেশি চ্যানেল থাকলেও যাতে সঠিকভাবে সব আলাদা লাইনে বাটন দেখায়
         for ch in unjoined:
             markup.add(types.InlineKeyboardButton(f"📢 Join {ch[1]}", url=ch[2]))
         markup.add(types.InlineKeyboardButton("✅ জয়েন সম্পন্ন করেছি (Verify)", callback_data="verify_channel_joins"))
@@ -966,7 +1090,8 @@ def handle_menu_buttons(message):
     elif text == "🛒 নতুন অর্ডার":
         main_cats = get_main_categories()
         if not main_cats:
-            bot.send_message(chat_id, "❌ <b>বর্তমানে কোনো সার্ভিস যুক্ত করা নেই।</b>\n\nএডমিন প্যানেল (/admin) থেকে সার্ভিস যোগ করুন।", parse_mode="HTML")
+            # কাস্টমার এন্ড থেকে /admin ও এডমিন প্যানেলের টেক্সট রিমুভ করা হয়েছে
+            bot.send_message(chat_id, "❌ <b>বর্তমানে কোনো সার্ভিস উপলব্ধ নেই। অনুগ্রহ করে কিছুক্ষণ পর চেষ্টা করুন।</b>", parse_mode="HTML")
             return
 
         btns = [types.InlineKeyboardButton(f"✨ {mc}", callback_data=f"mcat_{mc}") for mc in main_cats]
@@ -1327,8 +1452,10 @@ def start_bot_polling():
         except Exception as e:
             time.sleep(5)
 
+# 💡 Render হোস্টিংয়ের ফ্রি সার্ভারের ক্ষেত্রে মেমরি রিসেট হতে পারে।
+# পারসিস্টেন্ট ডেটা সংরক্ষণের জন্য Render Disk অথবা বাহ্যিক SQL সার্ভিস ব্যবহার করুন।
 if __name__ == "__main__":
-    print("🤖 SMM BOT IS RUNNING SUCCESSFULLY...")
+    print("🤖 MONIRUL SMM BOT IS RUNNING SUCCESSFULLY...")
     t = Thread(target=run_flask)
     t.daemon = True
     t.start()
