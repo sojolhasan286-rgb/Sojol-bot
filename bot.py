@@ -1944,7 +1944,7 @@ def confirm_order_final(message, selected_service, link, quantity, estimated_cos
     else:
         bot.send_message(chat_id, "❌ <b>অর্ডারটি বাতিল করা হয়েছে।</b>", reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
 
-# --- 💳 ডিপোজিট ভেরিফাই প্রসেসর ---
+# --- 💳 ডিপোজিট ভেরিফাই প্রসেসর (মোবাইল ফ্রেন্ডলি প্রিমিয়াম লেআউট ও ওয়ান-ট্যাপ কপি ফিক্স) ---
 def get_intended_deposit_amount(message):
     chat_id = message.chat.id
     amount_str = message.text.strip()
@@ -1973,19 +1973,19 @@ def get_intended_deposit_amount(message):
         web_app_url = f"{bot_domain}/payment-page?coins={intended_amount}&bdt={bdt_cost}&bkash={bkash_num}&nagad={nagad_num}"
         
         msg_text = (
-            "┏━━━━━━━━━━━━━━━━━━━━━━┓\n"
-            "   🪙  অটো রিচার্জ প্যানেল  🪙\n"
-            "┗━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-            f"💵 রিচার্জ পরিমাণ: {bdt_cost:.2f} BDT\n"
-            "⚠️ সর্বনিম্ন রিচার্জ পরিমাণ: ১০ টাকা\n\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            "💳 𝗠𝗘𝗧𝗛𝗢𝗗 / পেমেন্ট মাধ্যমসমূহ:\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📱 বিকাশ পার্সোনাল:\n{bkash_num}\n"
-            f"💸 নগদ পার্সোনাল:\n{nagad_num}\n"
-            "⚠️ নির্দেশনা:\n"
-            "প্রথমে ওপরের বিকাশ অথবা নগদ নাম্বারে টাকা Send Money করুন। এরপর নিচে থাকা পেমেন্ট বাটনে ক্লিক করে TrxID প্রদান করুন। সার্ভার অটোমেটিক আপনার ব্যালেন্স অ্যাড করে দেবে।\n\n"
-            "👇 রিচার্জ শুরু করতে নিচের বাটনে ক্লিক করুন:"
+            "┏━━━━━━━━━━━━━━━━━━━━┓\n"
+            "   🪙 <b>অটো রিচার্জ প্যানেল</b> 🪙\n"
+            "┗━━━━━━━━━━━━━━━━━━━━┛\n\n"
+            f"💵 <b>রিচার্জ পরিমাণ:</b> <b>{bdt_cost:.2f} BDT</b>\n"
+            "⚠️ <b>সর্বনিম্ন রিচার্জ পরিমাণ:</b> <b>১০ টাকা</b>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "💳 <b>METHOD / পেমেন্ট মাধ্যমসমূহ:</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"📱 <b>বিকাশ পার্সোনাল:</b> (চাপ দিলেই কপি হবে)\n<code>{bkash_num}</code>\n\n"
+            f"💸 <b>নগদ পার্সোনাল:</b> (চাপ দিলেই কপি হবে)\n<code>{nagad_num}</code>\n\n"
+            "⚠️ <b>নির্দেশনা:</b>\n"
+            "প্রথমে ওপরের বিকাশ অথবা নগদ নাম্বারে টাকা <b>Send Money</b> করুন। এরপর নিচে থাকা পেমেন্ট বাটনে ক্লিক করে TrxID প্রদান করুন। সার্ভার অটোমেটিক আপনার ব্যালেন্স অ্যাড করে দেবে।\n\n"
+            "👇 <b>রিচার্জ শুরু করতে নিচের বাটনে ক্লিক করুন:</b>"
         )
         
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
