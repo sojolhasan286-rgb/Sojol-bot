@@ -631,16 +631,14 @@ def handle_web_app_data(message):
             parse_mode="HTML"
         )
 
-# ----------------- 📱 SMS WEBHOOK -----------------
-@app.route('/sms-webhook', methods=['POST', 'GET'])
-def sms_webhook():
+# ----------------- 📱 SMS WEBHOOK (মাল্টি-রুট ম্যাপিং ফিক্স সহ) -----------------
+@app.route('/sms-webhook', methods=['POST', 'GET'], strict_slashes=False)
+@app.route('/sms-webhook/<token>', methods=['POST', 'GET'], strict_slashes=False)
+def sms_webhook(token=None):
     try:
         raw_parts = []
-        
-        # সেফগার্ড ডিকোডিং
         if request.args: raw_parts.extend([str(v) for v in request.args.values()])
         if request.form: raw_parts.extend([str(v) for v in request.form.values()])
-        if request.json and isinstance(request.json, dict): raw_parts.extend([str(v) for v in request.json.values()])
         
         raw_data = ""
         try:
@@ -893,7 +891,7 @@ def save_api_url(message):
         return
     set_setting("smm_api_url", url)
     msg = bot.send_message(message.chat.id, "🔑 <b>এখন আপনার নতুন SMM API Key টি লিখে পাঠান:</b>", parse_mode="HTML")
-    bot.register_next_step_handler(msg, save_api_key)
+    bot.register_next_step_handler(msg, save_api_url)
 
 def save_api_key(message):
     key = message.text.strip()
@@ -1595,7 +1593,7 @@ def handle_menu_buttons(message):
             bot.send_message(chat_id, "❌ <b>এই সাব-ক্যাটাগরিতে বর্তমানে কোনো সার্ভিস নেই।</b>", reply_markup=get_subcategories_keyboard(main_cat), parse_mode="HTML")
             return
 
-        response_text = f"👑 <b>𝗣𝗥𝗘𝗠𝗜𝗨𝗠 𝗦𝗘Ｒ𝗩𝗜𝗖𝗘 - {sub_cat}</b> 👑\n\n✨ নিচের তালিকা দেখে আপনার পছন্দের আইডি বাটনটি চাপুন ✨\n\n"
+        response_text = f"👑 <b>𝗣𝗥𝗘𝗠Ｉ𝗨𝗠 𝗦𝗘Ｒ𝗩Ｉ𝗖𝗘 - {sub_cat}</b> 👑\n\n✨ নিচের তালিকা দেখে আপনার পছন্দের আইডি বাটনটি চাপুন ✨\n\n"
         for s in services_list:
             response_text += (
                 f"🆔 <b>{s['id']}</b> ⎯ <b>{s['name']}</b>\n"
@@ -1685,7 +1683,7 @@ def handle_menu_buttons(message):
             bot.send_message(chat_id, "📭  আপনার কোনো পেমেন্ট রেকর্ড নেই।", reply_markup=get_main_menu_markup(chat_id))
             return
 
-        response = "📊 <b>আপনার সর্বশেষ ১০টি পেমেন্ট رিকোয়েস্ট:</b>\n\n"
+        response = "📊 <b>আপনার সর্বশেষ ১০টি পেমেন্ট রিকোয়েস্ট:</b>\n\n"
         for idx, p in enumerate(payments, 1):
             status_icon = "⏳" if p[3] == "Pending" else "✅"
             response += (
