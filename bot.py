@@ -150,6 +150,13 @@ def set_setting(key, value):
         cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
         conn.commit()
 
+# --- ট্রানজেকশন আইডি থেকে স্পেস ও হিডেন ক্যারেক্টার ফিল্টার করার ক্লিনার ---
+def clean_transaction_id(txid):
+    if not txid:
+        return ""
+    # শুধুমাত্র ইংরেজি অক্ষর ও সংখ্যা রেখে বাকি সব মুছে ফেলবে
+    return re.sub(r'[^A-Z0-9]', '', txid.strip().upper())
+
 def get_bkash_number():
     val = get_setting("bkash_number")
     return val if val else "01925263571"
@@ -370,18 +377,19 @@ def add_payment_to_db(chat_id, method, amount, txid, status='Approved'):
 def save_auto_sms_trx(txid, amount, method):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
         cursor = conn.cursor()
+        clean_tx = clean_transaction_id(txid)
         cursor.execute("INSERT OR IGNORE INTO auto_transactions (txid, amount, method, status) VALUES (?, ?, ?, 'Unclaimed')",
-                       (txid.strip().upper(), amount, method))
+                       (clean_tx, amount, method))
         conn.commit()
 
 def claim_auto_trx(txid):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
         cursor = conn.cursor()
-        clean_txid = txid.strip().upper()
-        cursor.execute("SELECT amount, method, status FROM auto_transactions WHERE UPPER(txid) = ?", (clean_txid,))
+        clean_tx = clean_transaction_id(txid)
+        cursor.execute("SELECT amount, method, status FROM auto_transactions WHERE UPPER(txid) = ?", (clean_tx,))
         row = cursor.fetchone()
         if row and row[2] == 'Unclaimed':
-            cursor.execute("UPDATE auto_transactions SET status = 'Claimed' WHERE UPPER(txid) = ?", (clean_txid,))
+            cursor.execute("UPDATE auto_transactions SET status = 'Claimed' WHERE UPPER(txid) = ?", (clean_tx,))
             conn.commit()
             return float(row[0]), row[1]
         return None, None
@@ -404,7 +412,7 @@ def home():
     set_setting("bot_domain", domain)
     return "SMM Bot Server is Alive and 24/7 Running!", 200
 
-# কাস্টম গেটওয়ে পেইজ এইচটিএমএল (অ্যানিমেশন এবং ডিজাইনে আপগ্রেড করা হয়েছে)
+# কাস্টম গেটওয়ে পেইজ এইচটিএমএল
 @app.route('/payment-page')
 def payment_page():
     coins = request.args.get('coins', '1000')
@@ -594,7 +602,8 @@ def payment_page():
 @bot.message_handler(content_types=['web_app_data'])
 def handle_web_app_data(message):
     chat_id = message.chat.id
-    user_txid = message.web_app_data.data.strip().upper()
+    raw_txid = message.web_app_data.data.strip()
+    user_txid = clean_transaction_id(raw_txid)
 
     amount, method = claim_auto_trx(user_txid)
 
@@ -619,8 +628,19 @@ def handle_web_app_data(message):
             parse_mode="HTML"
         )
 
+        # এডমিনের কাছে বিস্তারিত মেসেজ পাঠানো (ইউজার আইডি ও টাকার পরিমাণ সহ)
         try:
-            bot.send_message(MAIN_ADMIN_ID, f"🎉 <b>AUTO DEPOSIT SUCCESSFUL!</b>\n\n👤 User: <code>{chat_id}</code>\n🪙 Amount: <b>{received_coins:.2f} Coin</b> ({method})\n🆔 TxID: <code>{user_txid}</code>", parse_mode="HTML")
+            admin_msg = (
+                f"🎉 <b>AUTO DEPOSIT SUCCESSFUL!</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 <b>ইউজার আইডি:</b> <code>{chat_id}</code>\n"
+                f"💵 <b>টাকা পরিমাণ:</b> <b>{amount:.2f} BDT</b>\n"
+                f"🪙 <b>কয়েন যোগ হয়েছে:</b> <b>{received_coins:.2f} Coin</b>\n"
+                f"💳 <b>মেথড:</b> <b>{method}</b>\n"
+                f"🆔 <b>TrxID:</b> <code>{user_txid}</code>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━"
+            )
+            bot.send_message(MAIN_ADMIN_ID, admin_msg, parse_mode="HTML")
         except Exception:
             pass
     else:
@@ -671,10 +691,12 @@ def sms_webhook(token=None):
             amount = float(amt_match.group(1)) if amt_match else 10.0
             method = "Nagad" if ("Nagad" in full_text or "TxnID" in full_text) else "bKash"
 
-            save_auto_sms_trx(txid, amount, method)
+            # ট্রানজেকশন আইডি ফিল্টার ও ক্লিনিং করা
+            clean_tx = clean_transaction_id(txid)
+            save_auto_sms_trx(clean_tx, amount, method)
 
             try:
-                bot.send_message(MAIN_ADMIN_ID, f"📩 <b>{method} Auto SMS Received!</b>\n\n💵 Amount: <b>{amount:.2f} BDT</b>\n🆔 TrxID: <code>{txid}</code>", parse_mode="HTML")
+                bot.send_message(MAIN_ADMIN_ID, f"📩 <b>{method} Auto SMS Received!</b>\n\n💵 Amount: <b>{amount:.2f} BDT</b>\n🆔 TrxID: <code>{clean_tx}</code>", parse_mode="HTML")
             except Exception:
                 pass
 
@@ -711,7 +733,7 @@ def admin_panel_command(message):
     btn1 = types.InlineKeyboardButton("➕ মেইন প্ল্যাটফর্ম যোগ", callback_data="admin_add_main_cat")
     btn2 = types.InlineKeyboardButton("📂 সাব-ক্যাটাগরি যোগ", callback_data="admin_add_sub_cat")
     btn3 = types.InlineKeyboardButton("🛒 নতুন সার্ভিস যোগ", callback_data="admin_add_service_start")
-    btn4 = types.InlineKeyboardButton("🔍 ইউজার ইনফো ও কয়েন", callback_data="admin_user_info_start")
+    btn4 = types.InlineKeyboardButton("🔍 ইউজার ইনফো ও কয়েন", callback_data="admin_user_info_start")
     btn5 = types.InlineKeyboardButton("🖼️ স্টার্ট পিকচার সেট", callback_data="admin_set_start_photo")
     btn6 = types.InlineKeyboardButton("📝 স্টার্ট ডিসক্রিপশন সেট", callback_data="admin_set_welcome_text")
     btn7 = types.InlineKeyboardButton("📢 জয়েন চ্যানেল সেটআপ", callback_data="admin_force_channel_menu")
@@ -891,7 +913,7 @@ def save_api_url(message):
         return
     set_setting("smm_api_url", url)
     msg = bot.send_message(message.chat.id, "🔑 <b>এখন আপনার নতুন SMM API Key টি লিখে পাঠান:</b>", parse_mode="HTML")
-    bot.register_next_step_handler(msg, save_api_url)
+    bot.register_next_step_handler(msg, save_api_key)
 
 def save_api_key(message):
     key = message.text.strip()
@@ -1593,7 +1615,7 @@ def handle_menu_buttons(message):
             bot.send_message(chat_id, "❌ <b>এই সাব-ক্যাটাগরিতে বর্তমানে কোনো সার্ভিস নেই।</b>", reply_markup=get_subcategories_keyboard(main_cat), parse_mode="HTML")
             return
 
-        response_text = f"👑 <b>𝗣𝗥𝗘𝗠Ｉ𝗨𝗠 𝗦𝗘Ｒ𝗩Ｉ𝗖𝗘 - {sub_cat}</b> 👑\n\n✨ নিচের তালিকা দেখে আপনার পছন্দের আইডি বাটনটি চাপুন ✨\n\n"
+        response_text = f"👑 <b>𝗣𝗥𝗘𝗠Ｉ𝗨𝗠 𝗦𝗘Ｒ𝗩ＩＣＥ - {sub_cat}</b> 👑\n\n✨ নিচের তালিকা দেখে আপনার পছন্দের আইডি বাটনটি চাপুন ✨\n\n"
         for s in services_list:
             response_text += (
                 f"🆔 <b>{s['id']}</b> ⎯ <b>{s['name']}</b>\n"
