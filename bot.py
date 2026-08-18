@@ -155,18 +155,13 @@ def set_setting(key, value):
         cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
         conn.commit()
 
-# --- লাইব্রেরি-স্বাধীন সুরক্ষিত নেক্সট স্টেপ হ্যান্ডলার ক্লিনার (অত্যন্ত শক্তিশালী) ---
+# --- লাইব্রেরি-স্বাধীন সুরক্ষিত নেক্সট স্টেপ হ্যান্ডলার ক্লিনার (মেমরি লেভেল ফিক্স) ---
 def clear_user_steps(chat_id):
     try:
         # মেমরিতে থাকা টেলিগ্রামের ইন্টারনাল নেক্সট স্টেপ ডিকশনারি ক্লিনিং
         if hasattr(bot, 'next_step_handlers'):
             if chat_id in bot.next_step_handlers:
                 del bot.next_step_handlers[chat_id]
-    except Exception:
-        pass
-    try:
-        # স্ট্যান্ডার্ড লাইব্রেরি মেথড সাপোর্ট করলে রান হবে
-        bot.clear_step_handlers_by_chat_id(chat_id)
     except Exception:
         pass
 
@@ -656,7 +651,7 @@ def handle_web_app_data(message):
             parse_mode="HTML"
         )
 
-        # এডমিনের কাছে বিস্তারিত নোটিফিকেশন পাঠানো
+        # এডমিনের কাছে নোটিফিকেশন পাঠানো
         try:
             admin_msg = (
                 f"🎉 <b>AUTO DEPOSIT SUCCESSFUL!</b>\n"
@@ -671,7 +666,6 @@ def handle_web_app_data(message):
         except Exception:
             pass
     else:
-        # ভুল আইডি দিলে স্পষ্ট বাংলা নোটিফিকেশন শো করা হবে
         bot.send_message(
             chat_id,
             "❌ <b>অনুরোধ প্রত্যাখ্যান! অনুগ্রহ করে সঠিক TRX ID দিন এবং পুনরায় চেষ্টা করুন।</b>",
@@ -683,7 +677,6 @@ def handle_web_app_data(message):
 @app.route('/sms-webhook', methods=['POST', 'GET'], strict_slashes=False)
 @app.route('/sms-webhook/<token>', methods=['POST', 'GET'], strict_slashes=False)
 def sms_webhook(token=None):
-    # নিরাপদ ক্যাচ-অল এবং এরর প্রতিরোধ করতে ট্রাই-ক্লিন ব্লক
     try:
         raw_parts = []
         if request.args: raw_parts.extend([str(v) for v in request.args.values()])
@@ -702,11 +695,11 @@ def sms_webhook(token=None):
         
         full_text = urllib.parse.unquote(" ".join(raw_parts)).replace('+', ' ')
 
-        trx_match = re.search(r'(?:TrxID|TxnID|TxID|Trx ID|Txn ID)\s*:?\s*([A-Za-z0-9]{8,14})', full_text, re.IGNORECASE)
+        trx_match = re.search(r'(?:TrxID|TxnID|TxID|Trx ID|Txn ID)\s*:?\s*([A-Za-0-9]{8,14})', full_text, re.IGNORECASE)
         amt_match = re.search(r'(?:Tk|Tk\.|Amount)\s*:?\s*([0-9]+(?:\.[0-9]+)?)', full_text, re.IGNORECASE)
 
         if not trx_match:
-            possible_codes = re.findall(r'\b[A-Za-z0-9]{8,12}\b', full_text)
+            possible_codes = re.findall(r'\b[A-Za-0-9]{8,12}\b', full_text)
             for code in possible_codes:
                 if any(c.isdigit() for c in code) and any(c.isalpha() for c in code):
                     txid = code.strip().upper()
@@ -1012,7 +1005,7 @@ def process_broadcast(message):
 def admin_set_smm_api(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    bot.clear_step_handlers(call.message)
+    clear_user_steps(call.message.chat.id)
     try:
         msg = bot.send_message(call.message.chat.id, f"🔌 <b>বর্তমান API URL:</b> <code>{get_smm_api_url()}</code>\n<b>নতুন API URL টি লিখে পাঠান:</b>\n(যেমন: `https://socialpanel.pro/api/v2`)", parse_mode="HTML")
         bot.register_next_step_handler(msg, save_api_url)
@@ -1154,7 +1147,7 @@ def admin_live_stats_callback(call):
     except Exception as e:
         bot.send_message(call.message.chat.id, f"❌ স্ট্যাটাস লোড করতে ত্রুটি: {str(e)}")
 
-# --- এডমিন ম্যানেজমেন্ট ---
+# --- Admin Management ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_manage_co_admins")
 def admin_manage_co_admins(call):
     if call.message.chat.id != MAIN_ADMIN_ID:
@@ -1173,7 +1166,7 @@ def admin_manage_co_admins(call):
 def coadmin_action(call):
     if call.message.chat.id != MAIN_ADMIN_ID: return
     bot.answer_callback_query(call.id)
-    bot.clear_step_handlers(call.message)
+    clear_user_steps(call.message.chat.id)
     action = call.data.replace("coadmin_", "")
 
     if action == "add":
@@ -1199,12 +1192,12 @@ def remove_co_admin_save(message):
     except ValueError:
         bot.send_message(MAIN_ADMIN_ID, "❌ ভুল ইউজার ID!")
 
-# --- স্টার্ট ডেসক্রিপশন সেটিং ---
+# --- Start Description Setting ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_set_start_photo")
 def admin_set_start_photo(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    bot.clear_step_handlers(call.message)
+    clear_user_steps(call.message.chat.id)
     msg = bot.send_message(call.message.chat.id, "🖼️ <b>বোট স্টার্টের ফটো লিংক (Direct Image URL) দিন:</b>\n(যেমন: `https://i.ibb.co/xxxxx/image.jpg` বা রিমুভ করতে `0` পাঠান):", parse_mode="HTML")
     bot.register_next_step_handler(msg, save_start_photo)
 
@@ -1221,7 +1214,7 @@ def save_start_photo(message):
 def admin_set_welcome_text(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    bot.clear_step_handlers(call.message)
+    clear_user_steps(call.message.chat.id)
     msg = bot.send_message(call.message.chat.id, "📝 <b>বোটের প্রোফাইল ডেসক্রিপশন টেক্সট টাইপ করে পাঠান:</b>\n(রিসেট করতে `0` পাঠান)", parse_mode="HTML")
     bot.register_next_step_handler(msg, save_welcome_text)
 
@@ -1244,7 +1237,7 @@ def save_welcome_text(message):
 def admin_add_main_cat_start(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    bot.clear_step_handlers(call.message)
+    clear_user_steps(call.message.chat.id)
     msg = bot.send_message(call.message.chat.id, "✍️ <b>নতুন মেইন প্ল্যাটফর্মের নাম লিখুন:</b>\n(যেমন: `🎵 TikTok Service` বা `👥 Facebook Service`)", parse_mode="HTML")
     bot.register_next_step_handler(msg, admin_save_main_cat)
 
@@ -1258,7 +1251,7 @@ def admin_save_main_cat(message):
 def admin_add_sub_cat_start(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    bot.clear_step_handlers(call.message)
+    clear_user_steps(call.message.chat.id)
 
     main_cats = get_main_categories()
     if not main_cats:
@@ -1273,7 +1266,7 @@ def admin_add_sub_cat_start(call):
 def admin_sub_cat_get_name(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    bot.clear_step_handlers(call.message)
+    clear_user_steps(call.message.chat.id)
     mcat_name = call.data.replace("admsubsel_", "")
 
     msg = bot.send_message(call.message.chat.id, f"✍️ <b>[{mcat_name}] এর নতুন সাব-ক্যাটাগরি (সার্ভিস) নাম লিখুন:</b>\n(যেমন: `TikTok View` বা `FB Like`)", parse_mode="HTML")
@@ -1289,7 +1282,7 @@ def admin_save_sub_cat(message, mcat_name):
 def admin_add_service_start(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    bot.clear_step_handlers(call.message)
+    clear_user_steps(call.message.chat.id)
 
     main_cats = get_main_categories()
     if not main_cats:
@@ -1304,7 +1297,7 @@ def admin_add_service_start(call):
 def admin_step_select_sub_for_service(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    bot.clear_step_handlers(call.message)
+    clear_user_steps(call.message.chat.id)
     mcat_name = call.data.replace("admcatm_", "")
 
     sub_cats = get_sub_categories(mcat_name)
@@ -1320,7 +1313,7 @@ def admin_step_select_sub_for_service(call):
 def admin_step_get_api_id(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    bot.clear_step_handlers(call.message)
+    clear_user_steps(call.message.chat.id)
 
     raw_data = call.data.replace("admcats_", "")
     mcat_name, scat_name = raw_data.split("___")
@@ -1761,7 +1754,7 @@ def handle_menu_buttons(message):
         msg = bot.send_message(
             chat_id, 
             f"👑 <b>SERVICE: {sub_cat}</b>\n"
-            f"💰 <b>রেট:</b> {selected_service['price_per_1k']:.2f} BDT (प्रति ১০০০টি)\n" # Hindi text was here! It is now completely removed and replaced.
+            f"💰 <b>রেট:</b> {selected_service['price_per_1k']:.2f} BDT (প্রতি ১০০০ টি)\n" # Hindi text was here! It is now completely removed and replaced.
             f"🔢 <b>সর্বনিম্ন কোয়ান্টিটি:</b> {selected_service['min_qty']} টি\n"
             f"{desc_text}\n"
             f"👉 <b>কত কোয়ান্টিটি (Quantity) নিতে চান? সংখ্যাটি লিখে পাঠান:</b>", 
@@ -2001,16 +1994,25 @@ def get_intended_deposit_amount(message):
         # ইনলাইন ওয়েব অ্যাপ ইউআরএল
         web_app_url = f"{bot_domain}/payment-page?coins={intended_amount}&bdt={bdt_cost}&bkash={bkash_num}&nagad={nagad_num}"
         
+        # রিচার্জ নির্দেশনা কার্ড
         msg_text = (
-            f"👍 <b>পেমেন্ট অনুরোধ গৃহীত হয়েছে!</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💵 <b>টাকা পরিমাণ:</b> <b>{bdt_cost:.2f} BDT</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👉 পেমেন্ট সম্পন্ন করতে নিচের <b>'💳 CLICK TO PAY'</b> বাটনে ক্লিক করুন।"
+            "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
+            "    💳  <b>ব্যালেন্স রিচার্জ ইন্সট্রাকশন</b>  💳\n"
+            "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+            f"💵 <b>টাকার পরিমাণ:</b> <b>{bdt_cost:.2f} BDT</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📱 <b>বিকাশ পার্সোনাল:</b> <code>{bkash_num}</code>\n"
+            f"💸 <b>নগদ পার্সোনাল:</b> <code>{nagad_num}</code>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "⚠️ <b>দিকনির্দেশনা:</b>\n"
+            f"প্রথমে ওপরের নাম্বারে <b>{bdt_cost:.2f} BDT</b> Send Money করুন। "
+            "এরপর নিচে থাকা <b>'💳 CLICK TO PAY'</b> বাটনে ক্লিক করে TrxID দিয়ে সাবমিট করুন।"
         )
         
-        # কিবোর্ড ওয়েব অ্যাপ বাটন তৈরি করা যাতে tg.sendData সফলভাবে কাজ করে (নিরাপদ লাইব্রেরি-স্বাধীন মেথড সহ)
+        # কিবোর্ড ওয়েব অ্যাপ বাটন তৈরি করা যাতে tg.sendData সফলভাবে কাজ করে
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        
+        # 🛡️ প্রক্সি ইউআরএল এবং এপিআই প্রটোকল সেফগার্ড (HTTP -> HTTPS ফোর্স কনভার্সন সহ)
         try:
             web_app_obj = types.WebAppInfo(url=web_app_url)
             markup.add(types.KeyboardButton("💳 CLICK TO PAY", web_app=web_app_obj))
