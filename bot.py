@@ -404,7 +404,7 @@ def home():
     set_setting("bot_domain", domain)
     return "SMM Bot Server is Alive and 24/7 Running!", 200
 
-# কাস্টম গেটওয়ে পেইজ এইচটিএমএল (লুক, অ্যানিমেশন এবং লোগো ফিক্স করা হয়েছে)
+# কাস্টম গেটওয়ে পেইজ এইচটিএমএল (অ্যানিমেশন এবং ডিজাইনে আপগ্রেড করা হয়েছে)
 @app.route('/payment-page')
 def payment_page():
     coins = request.args.get('coins', '1000')
@@ -636,11 +636,21 @@ def handle_web_app_data(message):
 def sms_webhook():
     try:
         raw_parts = []
+        
+        # সেফগার্ড ডিকোডিং
         if request.args: raw_parts.extend([str(v) for v in request.args.values()])
         if request.form: raw_parts.extend([str(v) for v in request.form.values()])
         if request.json and isinstance(request.json, dict): raw_parts.extend([str(v) for v in request.json.values()])
         
-        raw_data = request.get_data(as_text=True)
+        raw_data = ""
+        try:
+            raw_data = request.get_data(as_text=True)
+        except Exception:
+            try:
+                raw_data = request.get_data().decode('utf-8', errors='ignore')
+            except Exception:
+                pass
+                
         if raw_data: raw_parts.append(raw_data)
         
         full_text = urllib.parse.unquote(" ".join(raw_parts)).replace('+', ' ')
@@ -1585,7 +1595,7 @@ def handle_menu_buttons(message):
             bot.send_message(chat_id, "❌ <b>এই সাব-ক্যাটাগরিতে বর্তমানে কোনো সার্ভিস নেই।</b>", reply_markup=get_subcategories_keyboard(main_cat), parse_mode="HTML")
             return
 
-        response_text = f"👑 <b>𝗣𝗥𝗘𝗠Ｉ𝗨𝗠 𝗦𝗘𝗥𝗩Ｉ𝗖𝗘 - {sub_cat}</b> 👑\n\n✨ নিচের তালিকা দেখে আপনার পছন্দের আইডি বাটনটি চাপুন ✨\n\n"
+        response_text = f"👑 <b>𝗣𝗥𝗘𝗠𝗜𝗨𝗠 𝗦𝗘Ｒ𝗩𝗜𝗖𝗘 - {sub_cat}</b> 👑\n\n✨ নিচের তালিকা দেখে আপনার পছন্দের আইডি বাটনটি চাপুন ✨\n\n"
         for s in services_list:
             response_text += (
                 f"🆔 <b>{s['id']}</b> ⎯ <b>{s['name']}</b>\n"
@@ -1675,7 +1685,7 @@ def handle_menu_buttons(message):
             bot.send_message(chat_id, "📭  আপনার কোনো পেমেন্ট রেকর্ড নেই।", reply_markup=get_main_menu_markup(chat_id))
             return
 
-        response = "📊 <b>আপনার সর্বশেষ ১০টি পেমেন্ট রিকোয়েস্ট:</b>\n\n"
+        response = "📊 <b>আপনার সর্বশেষ ১০টি পেমেন্ট رিকোয়েস্ট:</b>\n\n"
         for idx, p in enumerate(payments, 1):
             status_icon = "⏳" if p[3] == "Pending" else "✅"
             response += (
@@ -1880,7 +1890,7 @@ def get_intended_deposit_amount(message):
         nagad_num = get_nagad_number()
         bot_domain = get_bot_domain()
         
-        # ইনলাইন ওয়েব অ্যাপ ইউআরএল (HTTPS প্রটোকল ফিক্সড সহ)
+        # ইনলাইন ওয়েব অ্যাপ ইউআরএল
         web_app_url = f"{bot_domain}/payment-page?coins={intended_amount}&bdt={bdt_cost}&bkash={bkash_num}&nagad={nagad_num}"
         
         msg_text = (
