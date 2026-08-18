@@ -137,6 +137,8 @@ def init_db():
 # --- ডাইনামিক সেটিংস হেলাপার ফাংশনসমূহ ---
 def get_setting(key):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        # ইমোজি সাপোর্ট সহ ডেটা রিড করার জন্য টেক্সট ফ্যাক্টরি সেটআপ
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
         row = cursor.fetchone()
@@ -144,6 +146,7 @@ def get_setting(key):
 
 def set_setting(key, value):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
         conn.commit()
@@ -177,7 +180,12 @@ def get_coin_rate():
 
 def get_bot_domain():
     val = get_setting("bot_domain")
-    return val if val else "https://sojol-bot.onrender.com"
+    if val:
+        # টেলিগ্রাম ওয়েব অ্যাপের জন্য এইচটিটিপিএস লিংক নিশ্চিত করা
+        if val.startswith("http://"):
+            val = val.replace("http://", "https://")
+        return val
+    return "https://sojol-bot.onrender.com"
 
 def get_smm_api_url():
     val = get_setting("smm_api_url")
@@ -246,12 +254,14 @@ def get_user_stats(chat_id):
 # --- জয়েন চ্যানেল ফাংশনসমূহ ---
 def add_force_channel(channel_id, channel_name, invite_link):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("INSERT OR REPLACE INTO force_channels VALUES (?, ?, ?)", (channel_id, channel_name, invite_link))
         conn.commit()
 
 def get_force_channels():
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("SELECT channel_id, channel_name, invite_link FROM force_channels")
         return cursor.fetchall()
@@ -280,12 +290,14 @@ def check_user_joined_all(chat_id):
 # --- ৩-লেভেল ক্যাটাগরি ডাটাবেজ হেল্পার ---
 def add_main_category(name):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO main_categories VALUES (?)", (name,))
         conn.commit()
 
 def get_main_categories():
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM main_categories")
         rows = cursor.fetchall()
@@ -301,12 +313,14 @@ def delete_main_category(name):
 
 def add_sub_category(main_name, sub_name):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO sub_categories VALUES (?, ?)", (main_name, sub_name))
         conn.commit()
 
 def get_sub_categories(main_cat):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("SELECT sub_name FROM sub_categories WHERE main_name = ?", (main_cat,))
         rows = cursor.fetchall()
@@ -321,6 +335,7 @@ def delete_sub_category(main_name, sub_name):
 
 def get_services_by_sub_cat(main_cat, sub_cat):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("SELECT id_bot, api_id, name, price_per_1k, min_qty FROM services WHERE main_cat = ? AND sub_cat = ?", (main_cat, sub_cat))
         rows = cursor.fetchall()
@@ -334,6 +349,7 @@ def delete_single_service(main_cat, sub_cat, id_bot):
 
 def add_order_to_db(order_id, chat_id, service_name, quantity, cost):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("INSERT INTO orders (order_id, chat_id, service_name, quantity, cost) VALUES (?, ?, ?, ?, ?)",
                        (order_id, chat_id, service_name, quantity, cost))
@@ -341,6 +357,7 @@ def add_order_to_db(order_id, chat_id, service_name, quantity, cost):
 
 def get_user_orders(chat_id):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("SELECT order_id, service_name, quantity, cost FROM orders WHERE chat_id = ? ORDER BY id DESC LIMIT 5", (chat_id,))
         return cursor.fetchall()
@@ -373,6 +390,7 @@ def claim_auto_trx(txid):
 
 def get_user_payments(chat_id):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
+        conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("SELECT method, amount, txid, status FROM payments WHERE chat_id = ? ORDER BY id DESC LIMIT 10", (chat_id,))
         return cursor.fetchall()
@@ -382,7 +400,10 @@ init_db()
 # ----------------- 📱 SECURE WEB-APP PAYMENT SYSTEM -----------------
 @app.route('/')
 def home():
-    set_setting("bot_domain", request.url_root.strip('/'))
+    domain = request.url_root.strip('/')
+    if domain.startswith("http://"):
+        domain = domain.replace("http://", "https://")
+    set_setting("bot_domain", domain)
     return "SMM Bot Server is Alive and 24/7 Running!", 200
 
 # কাস্টম গেটওয়ে পেইজ এইচটিএমএল (অ্যানিমেশন এবং ডিজাইনে আপগ্রেড করা হয়েছে)
@@ -1417,13 +1438,14 @@ def process_clear_services_pin(message):
 # ===================================================
 
 def get_main_menu_markup(chat_id):
+    # মেনু বাটনগুলোকে আরো বড় বড় এবং সুন্দর করতে প্রিমিয়াম ইমোজি যুক্ত করা হয়েছে
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    btn1 = types.KeyboardButton("🛒 নতুন অর্ডার")
+    btn1 = types.KeyboardButton("🛒 নতুন অর্ডার করুন")
     btn2 = types.KeyboardButton("👤 আমার অ্যাকাউন্ট")
-    btn3 = types.KeyboardButton("📜 অর্ডার হিস্ট্রি")
-    btn4 = types.KeyboardButton("📜 অল ইউজার অর্ডার হিস্ট্রি")
-    btn5 = types.KeyboardButton("💳 Buy Coin (টাকা রিচার্জ)")
-    btn6 = types.KeyboardButton("📞 সাপোর্ট")
+    btn3 = types.KeyboardButton("📜 আমার অর্ডার হিস্ট্রি")
+    btn4 = types.KeyboardButton("📢 অল অর্ডার হিস্ট্রি")
+    btn5 = types.KeyboardButton("💳 টাকা রিচার্জ করুন")
+    btn6 = types.KeyboardButton("📞 সাপোর্ট সেন্টার")
     markup.add(btn1, btn2, btn3, btn4, btn5, btn6)
     return markup
 
@@ -1544,7 +1566,7 @@ def handle_menu_buttons(message):
         bot.send_message(chat_id, account_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
 
     # --- ২. নতুন অর্ডার ব্রাউজিং (লেভেল ১: প্ল্যাটফর্ম) ---
-    elif text == "🛒 নতুন অর্ডার" or text == "⬅️ ব্যাক (প্ল্যাটফর্মস)":
+    elif text == "🛒 নতুন অর্ডার করুন" or text == "⬅️ ব্যাক (প্ল্যাটফর্মস)":
         main_cats = get_main_categories()
         if not main_cats:
             bot.send_message(chat_id, "❌ <b>বর্তমানে কোনো সার্ভিস উপলব্ধ নেই। অনুগ্রহ করে কিছুক্ষণ পর চেষ্টা করুন।</b>", reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
@@ -1593,7 +1615,7 @@ def handle_menu_buttons(message):
         bot.register_next_step_handler(message, process_order_step_id, services_list)
 
     # --- ৫. রিচার্জ সিস্টেম (১০০০ কয়েন = ১২ BDT রেট হিসাবে) ---
-    elif text == "💳 Buy Coin (টাকা রিচার্জ)":
+    elif text == "💳 টাকা রিচার্জ করুন":
         rate = get_coin_rate()
         bkash = get_bkash_number()
         nagad = get_nagad_number()
@@ -1624,7 +1646,7 @@ def handle_menu_buttons(message):
         bot.register_next_step_handler(msg, get_intended_deposit_amount)
 
     # --- ৬. অল ইউজার অর্ডার হিস্ট্রি চ্যানেল বাটন ---
-    elif text == "📜 অল ইউজার অর্ডার হিস্ট্রি":
+    elif text == "📢 অল অর্ডার হিস্ট্রি":
         link = get_channel_link()
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🔗 চ্যানেলে প্রবেশ করুন", url=link))
@@ -1639,7 +1661,7 @@ def handle_menu_buttons(message):
         )
 
     # --- ७. অর্ডার হিস্ট্রি ---
-    elif text == "📜 অর্ডার হিস্ট্রি":
+    elif text == "📜 আমার অর্ডার হিস্ট্রি":
         msg_loading = bot.send_message(chat_id, "⏳ <b>অর্ডার হিস্ট্রি লোড হচ্ছে...</b>", parse_mode="HTML")
         orders = get_user_orders(chat_id)
         if not orders:
@@ -1681,7 +1703,7 @@ def handle_menu_buttons(message):
         bot.send_message(chat_id, response, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
 
     # --- ৯. সাপোর্ট ---
-    elif text == "📞 সাপোর্ট":
+    elif text == "📞 সাপোর্ট সেন্টার":
         username = get_support_username()
         phone = get_support_phone()
         support_text = (
@@ -1818,7 +1840,7 @@ def confirm_order_final(message, selected_service, link, quantity, estimated_cos
                 )
                 bot.send_message(chat_id, success_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
                 
-                # --- 📦 অর্ডার ফরওয়ার্ডিং লগ চ্যানেল ---
+                # --- 📦 অর্ডার ফরওয়ার্ডিং লগ চ্যানেল ফিচার ---
                 log_chan = get_log_channel_id()
                 if log_chan:
                     try:
@@ -1888,7 +1910,7 @@ def get_intended_deposit_amount(message):
         
         markup = types.InlineKeyboardMarkup()
         
-        # 🛡️ অত্যন্ত শক্তিশালী ফলব্যাক: সার্ভার লাইব্রেরি ও ডিভাইস প্যাকেজ অনুযায়ী সেফগার্ড
+        # 🛡️ প্রক্সি ইউআরএল এবং এপিআই প্রটোকল সেফগার্ড (HTTP -> HTTPS ফোর্স কনভার্সন)
         try:
             web_app_obj = types.WebAppInfo(url=web_app_url)
             markup.add(types.InlineKeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন", web_app=web_app_obj))
@@ -1899,7 +1921,6 @@ def get_intended_deposit_amount(message):
         bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode="HTML")
         
     except Exception as e:
-        # ক্র্যাশ এররটি ইউজার বা এডমিন চ্যাটে ডিবাগিংয়ের সুবিধার্থে স্পষ্ট দেখাবে
         error_msg = f"❌ <b>ক্যালকুলেশন ত্রুটি:</b> <code>{str(e)}</code>\n\nঅনুগ্রহ করে এডমিন প্যানেল থেকে আপনার বোটের ডোমেইন ও ইনফো চেক করুন।"
         bot.send_message(chat_id, error_msg, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
 
