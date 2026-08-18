@@ -385,7 +385,7 @@ def home():
     set_setting("bot_domain", request.url_root.strip('/'))
     return "SMM Bot Server is Alive and 24/7 Running!", 200
 
-# কাস্টম গেটওয়ে পেইজ এইচটিএমএল (উন্নত অ্যানিমেশন এবং ডিজাইনে আপগ্রেড করা হয়েছে)
+# কাস্টম গেটওয়ে পেইজ এইচটিএমএল (অ্যানিমেশন এবং ডিজাইনে আপগ্রেড করা হয়েছে)
 @app.route('/payment-page')
 def payment_page():
     coins = request.args.get('coins', '1000')
@@ -1504,7 +1504,7 @@ def send_main_menu(chat_id, first_name):
             f"⚡✅<b>আমাদের প্রিমিয়াম SMM বোটে স্বাগতম!</b> 🥰\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
             f"হ্যালো <b>{safe_name}</b>, আশা করি ভালো আছেন! আমাদের বোটে আপনাকে আন্তরিক অভিনন্দন। এখানে আপনি বাজারের সেরা ও দ্রুততম সোশ্যাল মিডিয়া সার্ভিসগুলো পাবেন। 🚀\n\n"
-            f"🛒 <b>অर्डर শুরু করতে নিচের বাটনগুলো ব্যবহার করুন!</b> 👇"
+            f"🛒 <b>অর্ডার শুরু করতে নিচের বাটনগুলো ব্যবহার করুন!</b> 👇"
         )
     
     start_photo = get_setting("start_photo")
@@ -1813,12 +1813,12 @@ def confirm_order_final(message, selected_service, link, quantity, estimated_cos
                     f"🔗 <b>লিংক:</b> {link}\n"
                     f"🔢 <b>কোয়ান্টিটি:</b> {quantity}\n"
                     f"💳 <b>খরচ:</b> <b>{estimated_cost:.2f} Coin</b>\n"
-                    f"💰 <b>অবশিষ্ট কয়েন:</b> <b>{new_balance:.2f} Coin</b>\n"
+                    f"💰 <b>অবशिष्ट কয়েন:</b> <b>{new_balance:.2f} Coin</b>\n"
                     f"🆔 <b>অর্ডার আইডি:</b> <code>{api_res['order']}</code> ✅"
                 )
                 bot.send_message(chat_id, success_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
                 
-                # --- 📦 অর্ডার ফরওয়ার্ডিং লগ চ্যানেল ফিচার ---
+                # --- 📦 অর্ডার ফরওয়ার্ডিং লগ চ্যানেল ---
                 log_chan = get_log_channel_id()
                 if log_chan:
                     try:
@@ -1887,13 +1887,21 @@ def get_intended_deposit_amount(message):
         )
         
         markup = types.InlineKeyboardMarkup()
-        markup.add(types.InlineKeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন", web_app=types.WebAppInfo(url=web_app_url)))
+        
+        # 🛡️ অত্যন্ত শক্তিশালী ফলব্যাক: সার্ভার লাইব্রেরি ও ডিভাইস প্যাকেজ অনুযায়ী সেফগার্ড
+        try:
+            web_app_obj = types.WebAppInfo(url=web_app_url)
+            markup.add(types.InlineKeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন", web_app=web_app_obj))
+        except (AttributeError, NameError):
+            # লাইব্রেরি যদি WebAppInfo সাপোর্ট না করে তবে ডিরেক্ট ব্রাউজার ওপেন লিংক ফলব্যাক করা হবে
+            markup.add(types.InlineKeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন (ব্রাউজার লিংক)", url=web_app_url))
         
         bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode="HTML")
         
     except Exception as e:
-        print(f"CRITICAL ERROR in get_intended_deposit_amount: {e}")
-        bot.send_message(chat_id, f"❌ সাময়িক ত্রুটি ঘটেছে। অনুগ্রহ করে আবার চেষ্টা করুন।", reply_markup=get_main_menu_markup(chat_id))
+        # ক্র্যাশ এররটি ইউজার বা এডমিন চ্যাটে ডিবাগিংয়ের সুবিধার্থে স্পষ্ট দেখাবে
+        error_msg = f"❌ <b>ক্যালকুলেশন ত্রুটি:</b> <code>{str(e)}</code>\n\nঅনুগ্রহ করে এডমিন প্যানেল থেকে আপনার বোটের ডোমেইন ও ইনফো চেক করুন।"
+        bot.send_message(chat_id, error_msg, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
 
 # ----------------- 🚀 RENDER/TERMUX FLASK THREAD -----------------
 def start_bot_polling():
