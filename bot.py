@@ -700,7 +700,6 @@ def sms_webhook(token=None):
         
         full_text = urllib.parse.unquote(" ".join(raw_parts)).replace('+', ' ')
 
-        # বিকাশ ও নগদ উভয় মেসেজ ফরম্যাট থেকে TrxID এবং Amount সঠিকভাবে খোঁজা
         trx_match = re.search(r'(?:TrxID|TxnID|TxID|Trx ID|Txn ID|Transaction ID|Trans ID)\s*[:=\s-]?\s*([A-Za-z0-9]{8,14})', full_text, re.IGNORECASE)
         amt_match = re.search(r'(?:Tk|Tk\.|Amount|BDT|received)\s*[:=\s-]?\s*(?:Tk\.?\s*)?([0-9]+(?:\.[0-9]+)?)', full_text, re.IGNORECASE)
 
@@ -1679,17 +1678,13 @@ def handle_menu_buttons(message):
     # --- ১. প্রফেশনাল প্রোফাইল ড্যাশবোর্ড কার্ড ---
     if text == "👤 MY PROFILE":
         balance = get_balance(chat_id)
-        total_orders, total_deposits = get_user_stats(chat_id)
         account_text = (
-            f"┏━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-            f"   👤 <b>ইউজার অ্যাকাউন্ট প্রোফাইল</b> 👤\n"
-            f"┗━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-            f"🆔 <b>আপনার ইউজার আইডি:</b> <code>{chat_id}</code>\n"
-            f"💰 <b>বর্তমান ব্যালেন্স:</b> <b>৳ {balance:.2f} BDT</b>\n"
-            f"🛒 <b>সম্পূর্ণকৃত মোট অর্ডার:</b> <b>{total_orders} টি</b>\n"
-            f"💳 <b>সফল ডিপোজিট রিকোয়েস্ট:</b> <b>{total_deposits} টি</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"💡 <i>যেকোনো সমস্যার জন্য সরাসরি আমাদের সাপোর্ট সেন্টারে যোগাযোগ করুন।</i>"
+            f"┏━━━━━━━━━━━━━━━━━━━━┓\n"
+            f"   👤 আমার অ্যাকাউন্ট ড্যাশবোর্ড 👤\n"
+            f"┗━━━━━━━━━━━━━━━━━━━━┛\n\n"
+            f"🆔 আপনার ইউজার আইডি : {chat_id}\n"
+            f"💰 বর্তমান ব্যালেন্স : {balance:.2f} BDT\n"
+            f"━━━━━━━━━━━━━━━━━━━━"
         )
         bot.send_message(chat_id, account_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
 
@@ -1978,17 +1973,19 @@ def get_intended_deposit_amount(message):
         web_app_url = f"{bot_domain}/payment-page?coins={intended_amount}&bdt={bdt_cost}&bkash={bkash_num}&nagad={nagad_num}"
         
         msg_text = (
-            "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-            "    💳  <b>ব্যালেন্স রিচার্জ ইন্সট্রাকশন</b>  💳\n"
-            "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
-            f"💵 <b>টাকার পরিমাণ:</b> <b>{bdt_cost:.2f} BDT</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"📱 <b>বিকাশ পার্সোনাল:</b> <code>{bkash_num}</code>\n"
-            f"💸 <b>নগদ পার্সোনাল:</b> <code>{nagad_num}</code>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            "⚠️ <b>দিকনির্দেশনা:</b>\n"
-            f"প্রথমে ওপরের নাম্বারে <b>{bdt_cost:.2f} BDT</b> Send Money করুন। "
-            "এরপর নিচে থাকা <b>'💳 CLICK TO PAY'</b> বাটনে ক্লিক করে TrxID দিয়ে সাবমিট করুন বা সরাসরি চ্যাটে TrxID লিখে পাঠিয়ে দিন।"
+            "┏━━━━━━━━━━━━━━━━━━━━━━┓\n"
+            "   🪙  অটো রিচার্জ প্যানেল  🪙\n"
+            "┗━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+            f"💵 রিচার্জ পরিমাণ: {bdt_cost:.2f} BDT\n"
+            "⚠️ সর্বনিম্ন রিচার্জ পরিমাণ: ১০ টাকা\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "💳 𝗠𝗘𝗧𝗛𝗢𝗗 / পেমেন্ট মাধ্যমসমূহ:\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📱 বিকাশ পার্সোনাল:\n{bkash_num}\n"
+            f"💸 নগদ পার্সোনাল:\n{nagad_num}\n"
+            "⚠️ নির্দেশনা:\n"
+            "প্রথমে ওপরের বিকাশ অথবা নগদ নাম্বারে টাকা Send Money করুন। এরপর নিচে থাকা পেমেন্ট বাটনে ক্লিক করে TrxID প্রদান করুন। সার্ভার অটোমেটিক আপনার ব্যালেন্স অ্যাড করে দেবে।\n\n"
+            "👇 রিচার্জ শুরু করতে নিচের বাটনে ক্লিক করুন:"
         )
         
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
