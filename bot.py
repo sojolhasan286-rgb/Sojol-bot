@@ -137,7 +137,6 @@ def init_db():
 # --- ডাইনামিক সেটিংস হেলাপার ফাংশনসমূহ ---
 def get_setting(key):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
-        # ইমোজি সাপোর্ট সহ ডেটা রিড করার জন্য টেক্সট ফ্যাক্টরি সেটআপ
         conn.text_factory = str
         cursor = conn.cursor()
         cursor.execute("SELECT value FROM settings WHERE key = ?", (key,))
@@ -181,7 +180,6 @@ def get_coin_rate():
 def get_bot_domain():
     val = get_setting("bot_domain")
     if val:
-        # টেলিগ্রাম ওয়েব অ্যাপের জন্য এইচটিটিপিএস লিংক নিশ্চিত করা
         if val.startswith("http://"):
             val = val.replace("http://", "https://")
         return val
@@ -406,7 +404,7 @@ def home():
     set_setting("bot_domain", domain)
     return "SMM Bot Server is Alive and 24/7 Running!", 200
 
-# কাস্টম গেটওয়ে পেইজ এইচটিএমএল (অ্যানিমেশন এবং ডিজাইনে আপগ্রেড করা হয়েছে)
+# কাস্টম গেটওয়ে পেইজ এইচটিএমএল (লুক, অ্যানিমেশন এবং লোগো ফিক্স করা হয়েছে)
 @app.route('/payment-page')
 def payment_page():
     coins = request.args.get('coins', '1000')
@@ -430,8 +428,6 @@ def payment_page():
                 to { transform: scale(1); }
             }
 
-            .header-logo { width: 85px; height: 85px; margin: 0 auto 15px; background: linear-gradient(135deg, #E9F2FE 0%, #C8E1FA 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: bold; color: #1E88E5; border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-            .title { font-size: 20px; font-weight: bold; margin-bottom: 25px; color: #111; letter-spacing: 0.5px; }
             .badge-bdt { font-size: 24px; font-weight: bold; color: #1E88E5; margin: 15px 0; }
             .instructions-banner { padding: 12px; border-radius: 12px; font-size: 13px; margin-bottom: 20px; font-weight: bold; text-align: center; animation: pulse 1.5s infinite; }
             
@@ -470,9 +466,9 @@ def payment_page():
             .icon-btn:active { transform: scale(0.9); }
             
             .gateway-options { display: flex; justify-content: space-between; margin-top: 15px; gap: 15px; }
-            .gate-select-btn { border: 1px solid #e2e8f0; background: white; padding: 18px 10px; border-radius: 16px; width: 48%; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
+            .gate-select-btn { border: 1px solid #e2e8f0; background: white; padding: 10px; border-radius: 16px; width: 48%; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.02); height: 80px; overflow: hidden; }
             .gate-select-btn:active { transform: scale(0.95); box-shadow: none; }
-            .gate-select-btn img { max-height: 38px; max-width: 100%; object-fit: contain; }
+            .gate-select-btn img { max-height: 100%; max-width: 100%; object-fit: cover; border-radius: 10px; }
             .active-view { display: block !important; }
         </style>
     </head>
@@ -480,15 +476,13 @@ def payment_page():
         <div class="container">
             <!-- ১ম পেইজ: মেথড সিলেকশন -->
             <div id="method-selection-view" class="active-view">
-                <div class="header-logo">MR</div>
-                <div class="title">MR PAY</div>
-                <button class="method-btn">Mobile Banking</button>
+                <button class="method-btn" style="box-shadow:none;">Mobile Banking</button>
                 <div class="gateway-options">
                     <div class="gate-select-btn" onclick="switchView('bkash')">
-                        <img src="https://i.ibb.co/C07B0hP/bkash.png" alt="bKash">
+                        <img src="https://files.catbox.moe/54mbuq.jpg" alt="bKash">
                     </div>
                     <div class="gate-select-btn" onclick="switchView('nagad')">
-                        <img src="https://i.ibb.co/37N1hR1/nagad.png" alt="Nagad">
+                        <img src="https://files.catbox.moe/m4iobq.jpg" alt="Nagad">
                     </div>
                 </div>
                 <div class="footer-nav">
@@ -510,7 +504,7 @@ def payment_page():
                 </div>
                 
                 <label style="font-size:14px; font-weight:bold; letter-spacing:0.5px;">ট্রানজেকশন আইডি দিন</label>
-                <input type="text" id="bkash-trx" class="input-trx" placeholder="যেমন: 8N73MX97">
+                <input type="text" id="bkash-trx" class="input-trx" placeholder="ট্রানজেকশন আইডি দিন">
 
                 <div style="font-size:13.5px; line-height:1.7; opacity: 0.95;">
                     <p>• <b>*247#</b> ডায়াল করে আপনার <b>BKASH</b> মোবাইল মেন্যুতে যান অথবা <b>BKASH</b> অ্যাপে যান।</p>
@@ -538,7 +532,7 @@ def payment_page():
                 </div>
                 
                 <label style="font-size:14px; font-weight:bold; letter-spacing:0.5px;">ট্রানজেকশন আইডি দিন</label>
-                <input type="text" id="nagad-trx" class="input-trx" placeholder="যেমন: 73MX978N">
+                <input type="text" id="nagad-trx" class="input-trx" placeholder="ট্রানজেকশন আইডি দিন">
 
                 <div style="font-size:13.5px; line-height:1.7; opacity: 0.95;">
                     <p>• <b>*167#</b> ডায়াল করে আপনার <b>NAGAD</b> মোবাইল মেন্যুতে যান অথবা <b>NAGAD</b> অ্যাপে যান।</p>
@@ -583,18 +577,11 @@ def payment_page():
             }
 
             function verifyTrx(method) {
-                let trx = '';
-                if (method === 'bkash') {
-                    trx = document.getElementById('bkash-trx').value.trim();
-                } else {
-                    trx = document.getElementById('nagad-trx').value.trim();
-                }
-
-                if (trx.length < 8) {
-                    alert('অনুগ্রহ করে সঠিক ৮-১০ ডিজিটের TrxID টাইপ করুন।');
+                const trx = (method === 'bkash' ? document.getElementById('bkash-trx').value : document.getElementById('nagad-trx').value).trim();
+                if (!trx) {
+                    alert('অনুগ্রহ করে সঠিক TrxID টাইপ করুন।');
                     return;
                 }
-
                 tg.sendData(trx);
             }
         </script>
@@ -639,10 +626,7 @@ def handle_web_app_data(message):
     else:
         bot.send_message(
             chat_id,
-            "❌ <b>ট্রানজেকশন আইডি পাওয়া যায়নি বা ইতিপূর্বে ক্লেইম করা হয়েছে!</b>\n\n"
-            "১. পেমেন্ট সম্পন্ন করা নিশ্চিত করুন।\n"
-            "২. টাকা পাঠানোর ১-২ মিনিট পর আবার ট্রাই করুন।\n"
-            "৩. সমস্যা হলে এডমিনের সাথে কথা বলুন।",
+            "❌ <b>অনুরোধ প্রত্যাখ্যান! অনুগ্রহ করে সঠিক TRX ID দিন এবং পুনরায় চেষ্টা করুন।</b>",
             reply_markup=get_main_menu_markup(chat_id),
             parse_mode="HTML"
         )
@@ -1438,12 +1422,12 @@ def process_clear_services_pin(message):
 # ===================================================
 
 def get_main_menu_markup(chat_id):
-    # মেনু বাটনগুলোকে আরো বড় বড় এবং সুন্দর করতে প্রিমিয়াম ইমোজি যুক্ত করা হয়েছে
+    # মেনু বাটনগুলোকে আরো বড় বড় এবং সুন্দর করতে প্রিমিয়াম ইমোজি যুক্ত করা হয়েছে
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     btn1 = types.KeyboardButton("🛒 নতুন অর্ডার করুন")
     btn2 = types.KeyboardButton("👤 আমার অ্যাকাউন্ট")
     btn3 = types.KeyboardButton("📜 আমার অর্ডার হিস্ট্রি")
-    btn4 = types.KeyboardButton("📢 অল অর্ডার হিস্ট্রি")
+    btn4 = types.KeyboardButton("📜 অল ইউজার অর্ডার হিস্ট্রি")
     btn5 = types.KeyboardButton("💳 টাকা রিচার্জ করুন")
     btn6 = types.KeyboardButton("📞 সাপোর্ট সেন্টার")
     markup.add(btn1, btn2, btn3, btn4, btn5, btn6)
@@ -1601,7 +1585,7 @@ def handle_menu_buttons(message):
             bot.send_message(chat_id, "❌ <b>এই সাব-ক্যাটাগরিতে বর্তমানে কোনো সার্ভিস নেই।</b>", reply_markup=get_subcategories_keyboard(main_cat), parse_mode="HTML")
             return
 
-        response_text = f"👑 <b>𝗣𝗥𝗘𝗠𝗜𝗨𝗠 𝗦𝗘𝗥𝗩𝗜𝗖𝗘 - {sub_cat}</b> 👑\n\n✨ নিচের তালিকা দেখে আপনার পছন্দের আইডি বাটনটি চাপুন ✨\n\n"
+        response_text = f"👑 <b>𝗣𝗥𝗘𝗠Ｉ𝗨𝗠 𝗦𝗘𝗥𝗩Ｉ𝗖𝗘 - {sub_cat}</b> 👑\n\n✨ নিচের তালিকা দেখে আপনার পছন্দের আইডি বাটনটি চাপুন ✨\n\n"
         for s in services_list:
             response_text += (
                 f"🆔 <b>{s['id']}</b> ⎯ <b>{s['name']}</b>\n"
@@ -1646,14 +1630,14 @@ def handle_menu_buttons(message):
         bot.register_next_step_handler(msg, get_intended_deposit_amount)
 
     # --- ৬. অল ইউজার অর্ডার হিস্ট্রি চ্যানেল বাটন ---
-    elif text == "📢 অল অর্ডার হিস্ট্রি":
+    elif text == "📜 অল ইউজার অর্ডার হিস্ট্রি":
         link = get_channel_link()
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🔗 চ্যানেলে প্রবেশ করুন", url=link))
         
         bot.send_message(
             chat_id,
-            "📢 <b>আমাদের অফিশিয়াল চ্যানেল</b>\n"
+            "📢 <b>우리 অফিশিয়াল চ্যানেল</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
             "আমাদের সকল অফিশিয়াল আপডেট, অল ইউজার লাইভ অর্ডার হিস্ট্রি এবং নতুন নতুন এনাউন্সমেন্ট পেতে নিচের বাটনে ক্লিক করে অফিশিয়াল চ্যানেলে জয়েন করুন:",
             reply_markup=markup,
@@ -1896,7 +1880,7 @@ def get_intended_deposit_amount(message):
         nagad_num = get_nagad_number()
         bot_domain = get_bot_domain()
         
-        # ইনলাইন ওয়েব অ্যাপ ইউআরএল
+        # ইনলাইন ওয়েব অ্যাপ ইউআরএল (HTTPS প্রটোকল ফিক্সড সহ)
         web_app_url = f"{bot_domain}/payment-page?coins={intended_amount}&bdt={bdt_cost}&bkash={bkash_num}&nagad={nagad_num}"
         
         msg_text = (
@@ -1910,12 +1894,11 @@ def get_intended_deposit_amount(message):
         
         markup = types.InlineKeyboardMarkup()
         
-        # 🛡️ প্রক্সি ইউআরএল এবং এপিআই প্রটোকল সেফগার্ড (HTTP -> HTTPS ফোর্স কনভার্সন)
+        # 🛡️ প্রক্সি ইউআরএল এবং এপিআই প্রটোকল সেফগার্ড (HTTP -> HTTPS ফোর্স কনভার্সন সহ)
         try:
             web_app_obj = types.WebAppInfo(url=web_app_url)
             markup.add(types.InlineKeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন", web_app=web_app_obj))
         except (AttributeError, NameError):
-            # লাইব্রেরি যদি WebAppInfo সাপোর্ট না করে তবে ডিরেক্ট ব্রাউজার ওপেন লিংক ফলব্যাক করা হবে
             markup.add(types.InlineKeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন (ব্রাউজার লিংক)", url=web_app_url))
         
         bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode="HTML")
