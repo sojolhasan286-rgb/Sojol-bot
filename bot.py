@@ -39,7 +39,10 @@ def create_2col_markup(button_list):
 # ----------------- ডাটাবেজ সেটআপ -----------------
 def init_db():
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
-        conn.execute("PRAGMA journal_mode=WAL;")
+        try:
+            conn.execute("PRAGMA journal_mode=WAL;")
+        except Exception:
+            pass
         cursor = conn.cursor()
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -379,11 +382,10 @@ init_db()
 # ----------------- 📱 SECURE WEB-APP PAYMENT SYSTEM -----------------
 @app.route('/')
 def home():
-    # ডোমেইন স্বয়ংক্রিয়ভাবে ডিটেক্ট করা হবে
     set_setting("bot_domain", request.url_root.strip('/'))
     return "SMM Bot Server is Alive and 24/7 Running!", 200
 
-# কাস্টম গেটওয়ে পেইজ এইচটিএমএল
+# কাস্টম গেটওয়ে পেইজ এইচটিএমএল (উন্নত অ্যানিমেশন এবং ডিজাইনে আপগ্রেড করা হয়েছে)
 @app.route('/payment-page')
 def payment_page():
     coins = request.args.get('coins', '1000')
@@ -400,25 +402,56 @@ def payment_page():
         <title>MR PAY GATEWAY</title>
         <script src="https://telegram.org/js/telegram-web-app.js"></script>
         <style>
-            body { font-family: 'Arial', sans-serif; background-color: #F3F8FF; margin: 0; padding: 15px; color: #333; }
-            .container { background-color: #fff; border-radius: 15px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; }
-            .header-logo { width: 80px; height: 80px; margin: 0 auto 10px; background: #E9F2FE; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: #1E88E5; border: 2px solid #D2E5FA; }
-            .title { font-size: 18px; font-weight: bold; margin-bottom: 5px; color: #111; }
+            body { font-family: 'Arial', sans-serif; background: linear-gradient(135deg, #F3F8FF 0%, #E3EFFF 100%); margin: 0; padding: 15px; color: #333; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+            .container { background-color: #fff; border-radius: 20px; padding: 25px 20px; box-shadow: 0 10px 30px rgba(30,136,229,0.1); text-align: center; width: 100%; max-width: 400px; box-sizing: border-box; transform: scale(0.95); animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
+            
+            @keyframes popIn {
+                to { transform: scale(1); }
+            }
+
+            .header-logo { width: 85px; height: 85px; margin: 0 auto 15px; background: linear-gradient(135deg, #E9F2FE 0%, #C8E1FA 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 26px; font-weight: bold; color: #1E88E5; border: 3px solid #fff; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+            .title { font-size: 20px; font-weight: bold; margin-bottom: 25px; color: #111; letter-spacing: 0.5px; }
             .badge-bdt { font-size: 24px; font-weight: bold; color: #1E88E5; margin: 15px 0; }
-            .instructions-banner { background-color: #FEF9E7; border: 1px solid #FADBD8; padding: 10px; border-radius: 10px; font-size: 12px; margin-bottom: 20px; color: #BA4A00; }
-            .method-btn { background-color: #1E88E5; color: white; padding: 15px; border-radius: 10px; font-size: 16px; font-weight: bold; border: none; width: 100%; cursor: pointer; transition: 0.3s; margin-bottom: 15px; }
-            .payment-box { display: none; text-align: left; padding: 15px; border-radius: 15px; color: white; }
-            .bkash-theme { background: #E2125D; display: none; }
-            .nagad-theme { background: #E11C24; display: none; }
-            .input-trx { width: calc(100% - 24px); padding: 12px; border-radius: 8px; border: none; margin: 15px 0; font-size: 15px; }
-            .copy-row { display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; font-size: 14px; margin-top: 5px; }
-            .copy-btn { background: white; color: #333; border: none; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; }
-            .verify-btn { background: #fff; color: #333; width: 100%; padding: 14px; border-radius: 10px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-            .footer-nav { margin-top: 15px; display: flex; gap: 10px; justify-content: center; }
-            .icon-btn { background: #fff; border: 1px solid #ddd; border-radius: 50%; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; text-decoration: none; }
-            .gateway-options { display: flex; justify-content: space-around; margin-top: 15px; }
-            .gate-select-btn { border: 1px solid #ddd; background: white; padding: 15px; border-radius: 12px; width: 45%; cursor: pointer; transition: 0.2s; text-align: center; }
-            .gate-select-btn img { max-height: 45px; max-width: 100%; display: block; margin: 0 auto; }
+            .instructions-banner { padding: 12px; border-radius: 12px; font-size: 13px; margin-bottom: 20px; font-weight: bold; text-align: center; animation: pulse 1.5s infinite; }
+            
+            @keyframes pulse {
+                0% { opacity: 0.9; }
+                50% { opacity: 1; transform: scale(1.02); }
+                100% { opacity: 0.9; }
+            }
+
+            .method-btn { background: linear-gradient(135deg, #1E88E5 0%, #1565C0 100%); color: white; padding: 16px; border-radius: 12px; font-size: 16px; font-weight: bold; border: none; width: 100%; cursor: pointer; transition: all 0.3s; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(30,136,229,0.3); }
+            .method-btn:active { transform: scale(0.98); }
+            
+            .payment-box { display: none; text-align: left; padding: 20px; border-radius: 20px; color: white; box-shadow: 0 10px 25px rgba(0,0,0,0.15); animation: slideUp 0.4s ease forwards; }
+            
+            @keyframes slideUp {
+                from { transform: translateY(30px); opacity: 0; }
+                to { transform: translateY(0); opacity: 1; }
+            }
+
+            .bkash-theme { background: linear-gradient(135deg, #E2125D 0%, #9F063A 100%); }
+            .nagad-theme { background: linear-gradient(135deg, #E11C24 0%, #A30A0E 100%); }
+            
+            .input-trx { width: calc(100% - 26px); padding: 14px; border-radius: 10px; border: 2px solid rgba(255,255,255,0.3); margin: 15px 0; font-size: 16px; background: rgba(255,255,255,0.1); color: white; outline: none; transition: 0.3s; }
+            .input-trx::placeholder { color: rgba(255,255,255,0.6); }
+            .input-trx:focus { background: rgba(255,255,255,0.25); border-color: white; }
+            
+            .copy-row { display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.15); padding: 12px; border-radius: 10px; font-size: 15px; margin-top: 8px; border: 1px dashed rgba(255,255,255,0.4); }
+            .copy-btn { background: white; color: #333; border: none; padding: 6px 15px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; transition: 0.2s; }
+            .copy-btn:active { transform: scale(0.9); }
+            
+            .verify-btn { background: #fff; color: #333; width: 100%; padding: 15px; border-radius: 12px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); transition: 0.3s; }
+            .verify-btn:active { transform: scale(0.97); }
+            
+            .footer-nav { margin-top: 25px; display: flex; gap: 15px; justify-content: center; }
+            .icon-btn { background: #fff; border: 1px solid #e0e0e0; border-radius: 50%; width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 22px; cursor: pointer; text-decoration: none; transition: 0.3s; box-shadow: 0 4px 10px rgba(0,0,0,0.03); }
+            .icon-btn:active { transform: scale(0.9); }
+            
+            .gateway-options { display: flex; justify-content: space-between; margin-top: 15px; gap: 15px; }
+            .gate-select-btn { border: 1px solid #e2e8f0; background: white; padding: 18px 10px; border-radius: 16px; width: 48%; cursor: pointer; transition: all 0.3s; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.02); }
+            .gate-select-btn:active { transform: scale(0.95); box-shadow: none; }
+            .gate-select-btn img { max-height: 38px; max-width: 100%; object-fit: contain; }
             .active-view { display: block !important; }
         </style>
     </head>
@@ -431,10 +464,10 @@ def payment_page():
                 <button class="method-btn">Mobile Banking</button>
                 <div class="gateway-options">
                     <div class="gate-select-btn" onclick="switchView('bkash')">
-                        <img src="https://i.ibb.co/C07B0hP/bkash.png" alt="bKash" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/BKash_Logo.svg/1200px-BKash_Logo.svg.png'">
+                        <img src="https://i.ibb.co/C07B0hP/bkash.png" alt="bKash">
                     </div>
                     <div class="gate-select-btn" onclick="switchView('nagad')">
-                        <img src="https://i.ibb.co/37N1hR1/nagad.png" alt="Nagad" onerror="this.src='https://www.logo.freetls.fastly.net/logos/nagad.png'">
+                        <img src="https://i.ibb.co/37N1hR1/nagad.png" alt="Nagad">
                     </div>
                 </div>
                 <div class="footer-nav">
@@ -442,71 +475,70 @@ def payment_page():
                     <a href="https://wa.me/8801925263571" class="icon-btn">💬</a>
                     <a href="tel:01925263571" class="icon-btn">📞</a>
                 </div>
-                <button class="method-btn" style="margin-top:25px; background:#D4E6F1; color:#1E88E5;" disabled>Pay {{ bdt }} BDT</button>
+                <button class="method-btn" style="margin-top:30px; background:#EBF5FB; color:#1E88E5; box-shadow:none;" disabled>Pay {{ bdt }} BDT</button>
             </div>
 
             <!-- বিকাশ পেমেন্ট পেইজ -->
             <div id="bkash-payment-view" class="payment-box bkash-theme">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-weight:bold; font-size:18px;">bKash Personal</span>
-                    <span style="font-weight:bold; font-size:18px;">{{ bdt }} BDT</span>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                    <span style="font-weight:bold; font-size:20px;">bKash Personal</span>
+                    <span style="font-weight:bold; font-size:20px;">{{ bdt }} BDT</span>
                 </div>
-                <div class="instructions-banner" style="margin-top:10px; color:#E2125D; background:#FADBD8;">
+                <div class="instructions-banner" style="color:#fff; background:rgba(0,0,0,0.25);">
                     নোটঃ টাকা পাঠানোর ৫-১০ সেকেন্ড পর ভেরিফাই করবেন।
                 </div>
                 
-                <label style="font-size:14px; font-weight:bold;">ট্রানজেকশন আইডি দিন</label>
-                <input type="text" id="bkash-trx" class="input-trx" placeholder="ট্রানজেকশন আইডি দিন">
+                <label style="font-size:14px; font-weight:bold; letter-spacing:0.5px;">ট্রানজেকশন আইডি দিন</label>
+                <input type="text" id="bkash-trx" class="input-trx" placeholder="যেমন: 8N73MX97">
 
-                <div style="font-size:13px; line-height:1.6;">
+                <div style="font-size:13.5px; line-height:1.7; opacity: 0.95;">
                     <p>• <b>*247#</b> ডায়াল করে আপনার <b>BKASH</b> মোবাইল মেন্যুতে যান অথবা <b>BKASH</b> অ্যাপে যান।</p>
                     <p>• <b>"Send Money"</b> এ ক্লিক করুন।</p>
                     <p>• প্রাপক নাম্বার হিসেবে নিচের নাম্বারটি লিখুন:</p>
                     <div class="copy-row">
-                        <span id="bkash-num-val" style="font-weight:bold; font-size:15px;">{{ bkash_num }}</span>
+                        <span id="bkash-num-val" style="font-weight:bold; font-size:16px; letter-spacing:0.5px;">{{ bkash_num }}</span>
                         <button class="copy-btn" onclick="copyNumber('{{ bkash_num }}')">Copy</button>
                     </div>
                     <p>• পরিমাণ: <b>{{ bdt }} BDT</b> দিয়ে পিন নম্বর দিয়ে সেন্ড করুন।</p>
                     <p>• সফলভাবে পাঠানো সম্পন্ন হলে প্রাপ্ত <b>Transaction ID</b> ওপরে বসিয়ে নিচের বাটনে ক্লিক করুন।</p>
                 </div>
                 <button class="verify-btn" onclick="verifyTrx('bkash')">VERIFY TRANSACTION</button>
-                <button class="verify-btn" style="background:transparent; color:white; border:1px solid white; margin-top:10px;" onclick="goHome()">BACK</button>
+                <button class="verify-btn" style="background:transparent; color:white; border:1px solid rgba(255,255,255,0.4); margin-top:12px; box-shadow:none;" onclick="goHome()">BACK</button>
             </div>
 
             <!-- নগদ পেমেন্ট পেইজ -->
             <div id="nagad-payment-view" class="payment-box nagad-theme">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <span style="font-weight:bold; font-size:18px;">Nagad Personal</span>
-                    <span style="font-weight:bold; font-size:18px;">{{ bdt }} BDT</span>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px;">
+                    <span style="font-weight:bold; font-size:20px;">Nagad Personal</span>
+                    <span style="font-weight:bold; font-size:20px;">{{ bdt }} BDT</span>
                 </div>
-                <div class="instructions-banner" style="margin-top:10px; color:#C0392B; background:#FADBD8;">
+                <div class="instructions-banner" style="color:#fff; background:rgba(0,0,0,0.25);">
                     নোটঃ টাকা পাঠানোর ৫-১০ সেকেন্ড পর ভেরিফাই করবেন।
                 </div>
                 
-                <label style="font-size:14px; font-weight:bold;">ট্রানজেকশন আইডি দিন</label>
-                <input type="text" id="nagad-trx" class="input-trx" placeholder="ট্রানজেকশন আইডি দিন">
+                <label style="font-size:14px; font-weight:bold; letter-spacing:0.5px;">ট্রানজেকশন আইডি দিন</label>
+                <input type="text" id="nagad-trx" class="input-trx" placeholder="যেমন: 73MX978N">
 
-                <div style="font-size:13px; line-height:1.6;">
+                <div style="font-size:13.5px; line-height:1.7; opacity: 0.95;">
                     <p>• <b>*167#</b> ডায়াল করে আপনার <b>NAGAD</b> মোবাইল মেন্যুতে যান অথবা <b>NAGAD</b> অ্যাপে যান।</p>
                     <p>• <b>"Send Money"</b> এ ক্লিক করুন।</p>
                     <p>• প্রাপক নাম্বার হিসেবে নিচের নাম্বারটি লিখুন:</p>
                     <div class="copy-row">
-                        <span id="nagad-num-val" style="font-weight:bold; font-size:15px;">{{ nagad_num }}</span>
+                        <span id="nagad-num-val" style="font-weight:bold; font-size:16px; letter-spacing:0.5px;">{{ nagad_num }}</span>
                         <button class="copy-btn" onclick="copyNumber('{{ nagad_num }}')">Copy</button>
                     </div>
                     <p>• পরিমাণ: <b>{{ bdt }} BDT</b> দিয়ে পিন নম্বর দিয়ে সেন্ড করুন।</p>
                     <p>• সফলভাবে পাঠানো সম্পন্ন হলে প্রাপ্ত <b>Transaction ID</b> ওপরে বসিয়ে নিচের বাটনে ক্লিক করুন।</p>
                 </div>
                 <button class="verify-btn" onclick="verifyTrx('nagad')">VERIFY TRANSACTION</button>
-                <button class="verify-btn" style="background:transparent; color:white; border:1px solid white; margin-top:10px;" onclick="goHome()">BACK</button>
+                <button class="verify-btn" style="background:transparent; color:white; border:1px solid rgba(255,255,255,0.4); margin-top:12px; box-shadow:none;" onclick="goHome()">BACK</button>
             </div>
 
         </div>
 
         <script>
-            // টেলিগ্রাম ওয়েব-অ্যাপ ইনিশিয়ালাইজেশন
             const tg = window.Telegram.WebApp;
-            tg.expand(); // ফুলস্ক্রিন ভিউ
+            tg.expand();
 
             function switchView(method) {
                 document.getElementById('method-selection-view').classList.remove('active-view');
@@ -525,7 +557,7 @@ def payment_page():
 
             function copyNumber(num) {
                 navigator.clipboard.writeText(num).then(() => {
-                    alert('নাম্বারটি কপি করা হয়েছে!');
+                    alert('সফলভাবে নাম্বার কপি করা হয়েছে!');
                 });
             }
 
@@ -542,7 +574,6 @@ def payment_page():
                     return;
                 }
 
-                // টেলিগ্রাম বোট চ্যাটে ট্রানজেকশন আইডি পাঠানো
                 tg.sendData(trx);
             }
         </script>
@@ -563,7 +594,6 @@ def handle_web_app_data(message):
         if chat_id in FAILED_ATTEMPTS:
             FAILED_ATTEMPTS.pop(chat_id)
 
-        # কয়েন কাস্টমারকে যোগ করে দেওয়া
         received_coins = (amount / get_coin_rate()) * 1000.0
 
         current_bal = get_balance(chat_id)
@@ -1474,7 +1504,7 @@ def send_main_menu(chat_id, first_name):
             f"⚡✅<b>আমাদের প্রিমিয়াম SMM বোটে স্বাগতম!</b> 🥰\n"
             f"━━━━━━━━━━━━━━━━━━━━━━\n"
             f"হ্যালো <b>{safe_name}</b>, আশা করি ভালো আছেন! আমাদের বোটে আপনাকে আন্তরিক অভিনন্দন। এখানে আপনি বাজারের সেরা ও দ্রুততম সোশ্যাল মিডিয়া সার্ভিসগুলো পাবেন। 🚀\n\n"
-            f"🛒 <b>অর্ডার শুরু করতে নিচের বাটনগুলো ব্যবহার করুন!</b> 👇"
+            f"🛒 <b>অर्डर শুরু করতে নিচের বাটনগুলো ব্যবহার করুন!</b> 👇"
         )
     
     start_photo = get_setting("start_photo")
@@ -1608,7 +1638,7 @@ def handle_menu_buttons(message):
             parse_mode="HTML"
         )
 
-    # --- ৭. অর্ডার হিস্ট্রি ---
+    # --- ७. অর্ডার হিস্ট্রি ---
     elif text == "📜 অর্ডার হিস্ট্রি":
         msg_loading = bot.send_message(chat_id, "⏳ <b>অর্ডার হিস্ট্রি লোড হচ্ছে...</b>", parse_mode="HTML")
         orders = get_user_orders(chat_id)
@@ -1827,38 +1857,43 @@ def get_intended_deposit_amount(message):
         send_main_menu(chat_id, message.from_user.first_name)
         return
 
-    if not amount_str.replace('.', '', 1).isdigit():
-        msg = bot.send_message(chat_id, "❌ <b>ভুল ইনপুট! শুধু সংখ্যা লিখে পাঠান:</b>", parse_mode="HTML")
-        bot.register_next_step_handler(msg, get_intended_deposit_amount)
-        return
+    try:
+        if not amount_str.replace('.', '', 1).isdigit():
+            msg = bot.send_message(chat_id, "❌ <b>ভুল ইনপুট! শুধু সংখ্যা লিখে পাঠান:</b>", parse_mode="HTML")
+            bot.register_next_step_handler(msg, get_intended_deposit_amount)
+            return
 
-    intended_amount = float(amount_str)
-    if intended_amount < 1000.0:
-        msg = bot.send_message(chat_id, "❌ <b>সর্বনিম্ন ১০০০ কয়েন কিনতে হবে!</b> আবার চেষ্টা করুন।", parse_mode="HTML")
-        bot.register_next_step_handler(msg, get_intended_deposit_amount)
-        return
-    
-    bdt_cost = (intended_amount / 1000.0) * get_coin_rate()
-    bkash_num = get_bkash_number()
-    nagad_num = get_nagad_number()
-    bot_domain = get_bot_domain()
-    
-    # ইনলাইন ওয়েব অ্যাপ ইউআরএল
-    web_app_url = f"{bot_domain}/payment-page?coins={intended_amount}&bdt={bdt_cost}&bkash={bkash_num}&nagad={nagad_num}"
-    
-    msg_text = (
-        f"👍 <b>কয়েন ক্রয়ের অনুরোধ গৃহীত হয়েছে!</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🪙 <b>কয়েনের পরিমাণ:</b> <b>{intended_amount:.2f} Coin</b>\n"
-        f"💵 <b>টাকা পরিমাণ:</b> <b>{bdt_cost:.2f} BDT</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👉 পেমেন্ট সম্পন্ন করতে নিচের <b>'💳 পেমেন্ট করতে এখানে ক্লিক করুন'</b> বাটনে ক্লিক করুন।"
-    )
-    
-    markup = types.InlineKeyboardMarkup()
-    markup.add(types.InlineKeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন", web_app=types.WebAppInfo(url=web_app_url)))
-    
-    bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode="HTML")
+        intended_amount = float(amount_str)
+        if intended_amount < 1000.0:
+            msg = bot.send_message(chat_id, "❌ <b>সর্বনিম্ন ১০০০ কয়েন কিনতে হবে!</b> আবার চেষ্টা করুন।", parse_mode="HTML")
+            bot.register_next_step_handler(msg, get_intended_deposit_amount)
+            return
+        
+        bdt_cost = (intended_amount / 1000.0) * get_coin_rate()
+        bkash_num = get_bkash_number()
+        nagad_num = get_nagad_number()
+        bot_domain = get_bot_domain()
+        
+        # ইনলাইন ওয়েব অ্যাপ ইউআরএল
+        web_app_url = f"{bot_domain}/payment-page?coins={intended_amount}&bdt={bdt_cost}&bkash={bkash_num}&nagad={nagad_num}"
+        
+        msg_text = (
+            f"👍 <b>কয়েন ক্রয়ের অনুরোধ গৃহীত হয়েছে!</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"🪙 <b>কয়েনের পরিমাণ:</b> <b>{intended_amount:.2f} Coin</b>\n"
+            f"💵 <b>টাকা পরিমাণ:</b> <b>{bdt_cost:.2f} BDT</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👉 পেমেন্ট সম্পন্ন করতে নিচের <b>'💳 পেমেন্ট করতে এখানে ক্লিক করুন'</b> বাটনে ক্লিক করুন।"
+        )
+        
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন", web_app=types.WebAppInfo(url=web_app_url)))
+        
+        bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode="HTML")
+        
+    except Exception as e:
+        print(f"CRITICAL ERROR in get_intended_deposit_amount: {e}")
+        bot.send_message(chat_id, f"❌ সাময়িক ত্রুটি ঘটেছে। অনুগ্রহ করে আবার চেষ্টা করুন।", reply_markup=get_main_menu_markup(chat_id))
 
 # ----------------- 🚀 RENDER/TERMUX FLASK THREAD -----------------
 def start_bot_polling():
