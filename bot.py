@@ -11,7 +11,7 @@ from flask import Flask, request, jsonify
 from telebot import types
 
 # ----------------- আপনার বোটের মূল সেটিংস -----------------
-BOT_TOKEN = "8386397372:AAG0giAEyymw58ClpPl4QJXmjBkRA9FAfGw"
+BOT_TOKEN = "8305538092:AAEngUxVOgzk5UDQx74i4wjRXfVmKp1A88A"
 SMMSUN_API_URL = "https://socialpanel.pro/api/v2"
 SMMSUN_API_KEY = "14f3163c337f51c7c90c6232d9428bc2"
 MAIN_ADMIN_ID = 6851638362 
@@ -23,7 +23,7 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "users.db")
 
-# ইউজার স্টেট ট্র্যাকার (নিচের বাটন নেভিগেশনের জন্য)
+# ইউজার স্টেট ট্র্যাকার
 USER_STATES = {}
 FAILED_ATTEMPTS = {}
 
@@ -40,7 +40,6 @@ def create_2col_markup(button_list):
 # ----------------- ডাটাবেজ সেটআপ -----------------
 def init_db():
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
-        # WAL মোড ইনেবল করা হয়েছে যাতে ডাটাবেজ ক্র্যাশ না করে
         conn.execute("PRAGMA journal_mode=WAL;")
         cursor = conn.cursor()
         cursor.execute("""
@@ -133,6 +132,7 @@ def init_db():
             
         conn.commit()
 
+# --- ডাইনামিক সেটিংস হেলাপার ফাংশনসমূহ ---
 def get_setting(key):
     with sqlite3.connect(DB_FILE, timeout=30) as conn:
         cursor = conn.cursor()
@@ -146,6 +146,30 @@ def set_setting(key, value):
         cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
         conn.commit()
 
+# --- ডাইনামিক ফিল্ডস ভ্যালু রিটার্ন ---
+def get_bkash_number():
+    val = get_setting("bkash_number")
+    return val if val else "01925263571"
+
+def get_nagad_number():
+    val = get_setting("nagad_number")
+    return val if val else "01925263571"
+
+def get_support_username():
+    val = get_setting("support_username")
+    return val if val else "@Mr_Sojol_Ceo"
+
+def get_support_phone():
+    val = get_setting("support_phone")
+    return val if val else "+8801925263571"
+
+def get_channel_link():
+    val = get_setting("channel_link")
+    return val if val else "https://t.me/your_channel"
+
+def get_log_channel_id():
+    return get_setting("log_channel_id")
+
 def get_coin_rate():
     val = get_setting("coin_rate_per_1000")
     return float(val) if val else 12.0
@@ -158,6 +182,7 @@ def get_smm_api_key():
     val = get_setting("smm_api_key")
     return val if val else SMMSUN_API_KEY
 
+# --- ইউজার অথেনটিকেশন এবং ব্যালেন্স মেথড ---
 def is_admin(chat_id):
     if chat_id == MAIN_ADMIN_ID:
         return True
@@ -438,9 +463,21 @@ def admin_panel_command(message):
     btn13 = types.InlineKeyboardButton("🪙 কয়েন রেট আপডেট", callback_data="admin_set_coin_rate")
     btn14 = types.InlineKeyboardButton("📢 ব্রডকাস্ট মেসেজ", callback_data="admin_broadcast_start")
     btn15 = types.InlineKeyboardButton("📊 লাইভ সেলস ও লাভ", callback_data="admin_live_stats")
-    btn16 = types.InlineKeyboardButton("💥 সকল সার্ভিস ডিলিট", callback_data="admin_clear_services_confirm")
+    
+    # নতুন সেটিংস কনফিগারেশন বাটনসমূহ
+    btn16 = types.InlineKeyboardButton("📞 বিকাশ নাম্বার সেট", callback_data="admin_set_bkash")
+    btn17 = types.InlineKeyboardButton("📱 নগদ নাম্বার সেট", callback_data="admin_set_nagad")
+    btn18 = types.InlineKeyboardButton("👤 সাপোর্ট ইউজার সেট", callback_data="admin_set_sup_user")
+    btn19 = types.InlineKeyboardButton("📱 সাপোর্ট ফোন সেট", callback_data="admin_set_sup_phone")
+    btn20 = types.InlineKeyboardButton("📢 অফিশিয়াল চ্যানেল সেট", callback_data="admin_set_chan_link")
+    btn21 = types.InlineKeyboardButton("📦 অর্ডার ফরওয়ার্ড চ্যানেল সেট", callback_data="admin_set_log_chan")
+    
+    btn22 = types.InlineKeyboardButton("💥 সকল সার্ভিস ডিলিট", callback_data="admin_clear_services_confirm")
 
-    markup = create_2col_markup([btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, btn11, btn12, btn13, btn14, btn15, btn16])
+    markup = create_2col_markup([
+        btn1, btn2, btn3, btn4, btn5, btn6, btn7, btn8, btn9, btn10, 
+        btn11, btn12, btn13, btn14, btn15, btn16, btn17, btn18, btn19, btn20, btn21, btn22
+    ])
 
     bot.send_message(
         message.chat.id,
@@ -451,12 +488,95 @@ def admin_panel_command(message):
         parse_mode="HTML"
     )
 
+# --- এডমিন সেটিংস হ্যান্ডলারসমূহ ---
+@bot.callback_query_handler(func=lambda call: call.data == "admin_set_bkash")
+def admin_set_bkash(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "📞 <b>আপনার নতুন বিকাশ পার্সোনাল নাম্বারটি টাইপ করে পাঠান:</b>", parse_mode="HTML")
+    bot.register_next_step_handler(msg, save_bkash)
+
+def save_bkash(message):
+    num = message.text.strip()
+    set_setting("bkash_number", num)
+    bot.send_message(message.chat.id, f"✅ <b>বিকাশ নাম্বার সফলভাবে সেট করা হয়েছে:</b> <code>{num}</code>", parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_set_nagad")
+def admin_set_nagad(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "📱 <b>আপনার নতুন নগদ পার্সোনাল নাম্বারটি টাইপ করে পাঠান:</b>", parse_mode="HTML")
+    bot.register_next_step_handler(msg, save_nagad)
+
+def save_nagad(message):
+    num = message.text.strip()
+    set_setting("nagad_number", num)
+    bot.send_message(message.chat.id, f"✅ <b>নগদ নাম্বার সফলভাবে সেট করা হয়েছে:</b> <code>{num}</code>", parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_set_sup_user")
+def admin_set_sup_user(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "👤 <b>আপনার নতুন সাপোর্ট টেলিগ্রাম ইউজারনেমটি টাইপ করে পাঠান:</b>\n(অবশ্যই @ সহ লিখবেন, যেমন: `@Mr_Sojol_Ceo`)", parse_mode="HTML")
+    bot.register_next_step_handler(msg, save_sup_user)
+
+def save_sup_user(message):
+    username = message.text.strip()
+    set_setting("support_username", username)
+    bot.send_message(message.chat.id, f"✅ <b>সাপোর্ট ইউজারনেম সফলভাবে সেট করা হয়েছে:</b> <code>{username}</code>", parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_set_sup_phone")
+def admin_set_sup_phone(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "📱 <b>আপনার নতুন সাপোর্ট হোয়াটসঅ্যাপ/ফোন নাম্বারটি টাইপ করে পাঠান:</b>\n(যেমন: `+8801925263571`)", parse_mode="HTML")
+    bot.register_next_step_handler(msg, save_sup_phone)
+
+def save_sup_phone(message):
+    phone = message.text.strip()
+    set_setting("support_phone", phone)
+    bot.send_message(message.chat.id, f"✅ <b>সাপোর্ট ফোন নাম্বার সফলভাবে সেট করা হয়েছে:</b> <code>{phone}</code>", parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_set_chan_link")
+def admin_set_chan_link(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(call.message.chat.id, "📢 <b>আপনার অফিশিয়াল চ্যানেল বা অল ইউজার অর্ডার হিস্ট্রি চ্যানেলের লিংকটি দিন:</b>\n(যেমন: `https://t.me/your_channel`)", parse_mode="HTML")
+    bot.register_next_step_handler(msg, save_chan_link)
+
+def save_chan_link(message):
+    link = message.text.strip()
+    if not link.startswith("http"):
+        bot.send_message(message.chat.id, "❌ <b>ভুল লিংক! লিংকটি অবশ্যই http/https দিয়ে শুরু হতে হবে।</b> পুনরায় ট্রাই করুন।")
+        return
+    set_setting("channel_link", link)
+    bot.send_message(message.chat.id, f"✅ <b>অফিশিয়াল চ্যানেল লিংক সফলভাবে সেট করা হয়েছে!</b>", parse_mode="HTML")
+
+@bot.callback_query_handler(func=lambda call: call.data == "admin_set_log_chan")
+def admin_set_log_chan(call):
+    if not is_admin(call.message.chat.id): return
+    bot.answer_callback_query(call.id)
+    msg = bot.send_message(
+        call.message.chat.id, 
+        "📦 <b>অর্ডার ফরওয়ার্ড করার জন্য আপনার চ্যানেল বা গ্রুপের ID-টি টাইপ করে পাঠান:</b>\n\n"
+        "ℹ️ <i>কিভাবে আইডি পাবেন:</i>\n"
+        "১. প্রথমে বোটকে আপনার চ্যানেল বা গ্রুপে অ্যাডমিন হিসেবে যুক্ত করুন এবং মেসেজ পাঠানোর পারমিশন দিন।\n"
+        "২. এরপর আপনার চ্যানেলের আইডিটি (যেমন: `-1002345678912`) এখানে টাইপ করে পাঠান।", 
+        parse_mode="HTML"
+    )
+    bot.register_next_step_handler(msg, save_log_chan)
+
+def save_log_chan(message):
+    cid = message.text.strip()
+    set_setting("log_channel_id", cid)
+    bot.send_message(message.chat.id, f"✅ <b>অর্ডার লগ চ্যানেল আইডি সফলভাবে সেট করা হয়েছে:</b> <code>{cid}</code>\n\nএখন থেকে প্রতিটি সফল অর্ডার এই চ্যানেলে স্বয়ংক্রিয়ভাবে ফরওয়ার্ড হয়ে যাবে।", parse_mode="HTML")
+
 # --- কয়েন রেট আপডেট ---
 @bot.callback_query_handler(func=lambda call: call.data == "admin_set_coin_rate")
 def admin_set_coin_rate(call):
     if not is_admin(call.message.chat.id): return
     bot.answer_callback_query(call.id)
-    msg = bot.send_message(call.message.chat.id, f"🪙 <b>বর্তমান রেট: ১০০০ কয়েন = {get_coin_rate()} টাকা</b>\n\n১০০০ কয়েনের নতুন মূল্য কত টাকা করতে চান? (শুধুমাত্র সংখ্যা যেমন: 12 বা 15 লিখে পাঠান):", parse_mode="HTML")
+    msg = bot.send_message(call.message.chat.id, f"🪙 <b>বর্তমান রেট: ১০০০ কয়েন = {get_coin_rate()} BDT</b>\n\n১০০০ কয়েনের নতুন মূল্য কত টাকা করতে চান? (শুধুমাত্র সংখ্যা যেমন: 12 বা 15 লিখে পাঠান):", parse_mode="HTML")
     bot.register_next_step_handler(msg, save_coin_rate)
 
 def save_coin_rate(message):
@@ -1054,13 +1174,13 @@ def get_main_menu_markup(chat_id):
     btn1 = types.KeyboardButton("🛒 নতুন অর্ডার")
     btn2 = types.KeyboardButton("👤 আমার অ্যাকাউন্ট")
     btn3 = types.KeyboardButton("📜 অর্ডার হিস্ট্রি")
-    btn4 = types.KeyboardButton("📊 পেমেন্ট হিস্ট্রি")
+    btn4 = types.KeyboardButton("📢 আমাদের অফিশিয়াল চ্যানেল")
     btn5 = types.KeyboardButton("💳 Buy Coin (টাকা রিচার্জ)")
     btn6 = types.KeyboardButton("📞 সাপোর্ট")
     markup.add(btn1, btn2, btn3, btn4, btn5, btn6)
     return markup
 
-# --- 🚀 ৩-স্তরের নেভিগেশন কিবোর্ড জেনারেটর (নিচের বাটন) ---
+# --- ৩-স্তরের নেভিগেশন কিবোর্ড জেনারেটর (নিচের বাটন) ---
 def get_platforms_keyboard():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     main_cats = get_main_categories()
@@ -1180,7 +1300,7 @@ def handle_menu_buttons(message):
     elif text == "🛒 নতুন অর্ডার" or text == "⬅️ ব্যাক (প্ল্যাটফর্মস)":
         main_cats = get_main_categories()
         if not main_cats:
-            bot.send_message(chat_id, "❌ <b>বর্তমানে কোনো সার্ভিস উপলব্ধ নেই। অনুগ্রহ করে পরে চেষ্টা করুন।</b>", reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
+            bot.send_message(chat_id, "❌ <b>বর্তমানে কোনো সার্ভিস উপলব্ধ নেই। অনুগ্রহ করে কিছুক্ষণ পর চেষ্টা করুন।</b>", reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
             return
 
         USER_STATES[chat_id] = {"step": "PLATFORMS"}
@@ -1225,36 +1345,55 @@ def handle_menu_buttons(message):
         bot.send_message(chat_id, response_text, reply_markup=get_service_choice_keyboard(services_list), parse_mode="HTML")
         bot.register_next_step_handler(message, process_order_step_id, services_list)
 
-    # --- ৫. রিচার্জ সিস্টেম (১০০০ কয়েন = ১২ টাকা) ---
+    # --- ৫. রিচার্জ সিস্টেম (১০০০ কয়েন = ১২ BDT রেট হিসাবে) ---
     elif text == "💳 Buy Coin (টাকা রিচার্জ)":
         rate = get_coin_rate()
+        bkash = get_bkash_number()
+        nagad = get_nagad_number()
+        
         deposit_text = (
-            "💎 <b>কয়েন রিচার্জ করার নিয়মাবলি</b> 💎\n"
-            f"💸 <b>১০০০ কয়েন = {rate:.2f} BDT (টাকা)</b> 💸\n\n"
-            "╔══════════════════════╗\n"
-            "💳 𝗣𝗔𝗬𝗠𝗘𝗡𝗧 𝗜𝗡𝗦𝗧𝗥𝗨𝗖𝗧𝗜𝗢𝗡 💳\n"
-            "╚══════════════════════╝\n\n"
-            "🪙 <b>কয়েন রেট লিস্ট:</b>\n"
-            f"• 1000 Coin = {rate:.2f} BDT\n"
-            f"• 2000 Coin = {rate*2:.2f} BDT\n"
-            f"• 5000 Coin = {rate*5:.2f} BDT\n\n"
-            "🆔 <b>বিকাশ (পার্সোনাল):</b> <code>01925263571</code>\n"
-            "💸 <b>নগদ পার্সোনাল:</b> <code>01925263571</code>\n\n"
-            "⚠️ <b>সর্বনিম্ন ১০০০ কয়েন কিনতে হবে।</b>\n"
-            "Send Money করার পর নিচে কয়েন পরিমাণ এবং পেমেন্টের TrxID দিলেই ১ সেকেন্ডে কয়েন যোগ হবে!\n\n"
-            "👇 <b>রিচার্জ করতে নিচের বাটনে চাপ দিন:</b>"
+            "┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
+            "    🪙  <b>অটো কয়েন রিচার্জ প্যানেল</b>  🪙\n"
+            "┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+            f"💵 <b>এক্সচেঞ্জ রেট:</b> ১০০০ কয়েন = <b>{rate:.2f} BDT</b>\n"
+            "⚠️ <b>সর্বনিম্ন রিচার্জ পরিমাণ:</b> <b>১০০০ কয়েন</b>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            "💳 <b>𝗠𝗘𝗧𝗛𝗢𝗗 / পেমেন্ট মাধ্যমসমূহ:</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📱 <b>বিকাশ পার্সোনাল:</b> <code>{bkash}</code>\n"
+            f"💸 <b>নগদ পার্সোনাল:</b> <code>{nagad}</code>\n\n"
+            "⚠️ <b>নির্দেশনা:</b>\n"
+            "প্রথমে ওপরের বিকাশ অথবা নগদ নাম্বারে টাকা <b>Send Money</b> করুন। "
+            "এরপর নিচে থাকা পেমেন্ট বাটনে ক্লিক করে সঠিক কয়েনের পরিমাণ ও TrxID প্রদান করুন। "
+            "সার্ভার অটোমেটিক আপনার ব্যালেন্স অ্যাড করে দেবে।\n\n"
+            "👇 <b>রিচার্জ শুরু করতে নিচের বাটনে ক্লিক করুন:</b>"
         )
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.add(types.KeyboardButton("⚡ অটো পেমেন্ট ভেরিফাই করুন"), types.KeyboardButton("⬅️ প্রধান মেনু"))
+        markup.add(types.KeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন"), types.KeyboardButton("⬅️ প্রধান মেনু"))
         bot.send_message(chat_id, deposit_text, reply_markup=markup, parse_mode="HTML")
 
-    elif text == "⚡ অটো পেমেন্ট ভেরিফাই করুন":
+    elif text == "💳 পেমেন্ট করতে এখানে ক্লিক করুন":
         msg = bot.send_message(chat_id, "💵 <b>কত কয়েন (Coin) কিনতে চান? পরিমাণ লিখে পাঠান:</b>\n(যেমন: 1000, 2000 বা 5000। সর্বনিম্ন ১০০০ কয়েন):", reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add("⬅️ প্রধান মেনু"), parse_mode="HTML")
         bot.register_next_step_handler(msg, get_intended_deposit_amount)
 
-    # --- ৬. অর্ডার হিস্ট্রি ---
+    # --- ৬. অল ইউজার অর্ডার হিস্ট্রি চ্যানেল বাটন ---
+    elif text == "📢 আমাদের অফিশিয়াল চ্যানেল":
+        link = get_channel_link()
+        markup = types.InlineKeyboardMarkup()
+        markup.add(types.InlineKeyboardButton("🔗 চ্যানেলে প্রবেশ করুন", url=link))
+        
+        bot.send_message(
+            chat_id,
+            "📢 <b>আমাদের অফিশিয়াল চ্যানেল</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "আমাদের সকল অফিশিয়াল আপডেট, অল ইউজার লাইভ অর্ডার হিস্ট্রি এবং নতুন নতুন এনাউন্সমেন্ট পেতে নিচের বাটনে ক্লিক করে অফিশিয়াল চ্যানেলে জয়েন করুন:",
+            reply_markup=markup,
+            parse_mode="HTML"
+        )
+
+    # --- ৭. অর্ডার হিস্ট্রি ---
     elif text == "📜 অর্ডার হিস্ট্রি":
-        msg_loading = bot.send_message(chat_id, "⏳ <b>লাইভ অর্ডার স্ট্যাটাস লোড হচ্ছে...</b>", parse_mode="HTML")
+        msg_loading = bot.send_message(chat_id, "⏳ <b>অর্ডার হিস্ট্রি লোড হচ্ছে...</b>", parse_mode="HTML")
         orders = get_user_orders(chat_id)
         if not orders:
             bot.edit_message_text("📭 <b>আপনি এখনো কোনো অর্ডার করেননি।</b>", chat_id=chat_id, message_id=msg_loading.message_id, parse_mode="HTML")
@@ -1276,7 +1415,7 @@ def handle_menu_buttons(message):
             )
         bot.edit_message_text(response, chat_id=chat_id, message_id=msg_loading.message_id, parse_mode="HTML")
 
-    # --- ৭. পেমেন্ট হিস্ট্রি ---
+    # --- ৮. পেমেন্ট হিস্ট্রি ---
     elif text == "📊 পেমেন্ট হিস্ট্রি":
         payments = get_user_payments(chat_id)
         if not payments:
@@ -1294,14 +1433,16 @@ def handle_menu_buttons(message):
             )
         bot.send_message(chat_id, response, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
 
-    # --- ৮. সাপোর্ট ---
+    # --- ৯. সাপোর্ট ---
     elif text == "📞 সাপোর্ট":
+        username = get_support_username()
+        phone = get_support_phone()
         support_text = (
             "┏━━━━━━━━━━━━━━━━━━┓\n"
             "       📞   <b>এডমিন সাপোর্ট</b>   📞\n"
             "┗━━━━━━━━━━━━━━━━━━┛\n\n"
-            "💬  টেলিগ্রাম এডমিন: @Mr_Sojol_Ceo\n"
-            "📱 হোয়াটসঅ্যাপ: +8801925263571\n\n"
+            f"💬 <b>টেলিগ্রাম এডমিন:</b> {username}\n"
+            f"📱 <b>হোয়াটসঅ্যাপ/ফোন:</b> {phone}\n\n"
             "পেমেন্ট এড করা বা অর্ডার সংক্রান্ত যেকোনো সমস্যার জন্য সরাসরি এডমিনের সাথে যোগাযোগ করুন।"
         )
         bot.send_message(chat_id, support_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
@@ -1429,6 +1570,27 @@ def confirm_order_final(message, selected_service, link, quantity, estimated_cos
                     f"🆔 <b>অর্ডার আইডি:</b> <code>{api_res['order']}</code> ✅"
                 )
                 bot.send_message(chat_id, success_text, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
+                
+                # --- 📦 অর্ডার ফরওয়ার্ডিং লগ চ্যানেল ফিচার ---
+                log_chan = get_log_channel_id()
+                if log_chan:
+                    try:
+                        bot.send_message(
+                            log_chan,
+                            f"📦 <b>NEW ORDER PLACED!</b>\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"👤 <b>ইউজার আইডি:</b> <code>{chat_id}</code>\n"
+                            f"🆔 <b>অর্ডার আইডি:</b> <code>{api_res['order']}</code>\n"
+                            f"📌 <b>সার্ভিস:</b> <b>{selected_service['name']}</b>\n"
+                            f"🔢 <b>কোয়ান্টিটি:</b> <b>{quantity} টি</b>\n"
+                            f"💵 <b>মূল্য:</b> <b>{estimated_cost:.2f} Coin</b>\n"
+                            f"🔗 <b>লিংক:</b> {link}\n"
+                            f"━━━━━━━━━━━━━━━━━━━━━━\n"
+                            f"✅ <i>অর্ডারটি সফলভাবে সার্ভারে সাবমিট হয়েছে।</i>",
+                            parse_mode="HTML"
+                        )
+                    except Exception:
+                        pass
             else:
                 error_msg = api_res.get("error", "Unknown SMM Server error") if isinstance(api_res, dict) else "Invalid SMM Server response"
                 bot.send_message(chat_id, f"❌ <b>অর্ডার ব্যর্থ হয়েছে। সার্ভার রেসপন্স:</b> {error_msg}", reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
@@ -1489,7 +1651,7 @@ def process_auto_trx_claim(message):
         if chat_id in FAILED_ATTEMPTS:
             FAILED_ATTEMPTS.pop(chat_id)
 
-        # কয়েন কাস্টমারকে যোগ করে দেওয়া (এসএমএস এ পাঠানো টাকার পরিমাণ অনুযায়ী কয়েন প্রদান)
+        # কয়েন হিসাব রূপান্তর
         received_coins = (amount / get_coin_rate()) * 1000.0
 
         current_bal = get_balance(chat_id)
