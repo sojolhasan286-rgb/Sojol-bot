@@ -7,7 +7,7 @@ import os
 import re
 import urllib.parse
 from threading import Thread
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template_string
 from telebot import types
 
 # ----------------- আপনার বোটের মূল সেটিংস -----------------
@@ -23,7 +23,6 @@ app = Flask(__name__)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_FILE = os.path.join(BASE_DIR, "users.db")
 
-# ইউজার স্টেট ট্র্যাকার
 USER_STATES = {}
 FAILED_ATTEMPTS = {}
 
@@ -146,7 +145,6 @@ def set_setting(key, value):
         cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
         conn.commit()
 
-# --- ডাইনামিক ফিল্ডস ভ্যালু রিটার্ন ---
 def get_bkash_number():
     val = get_setting("bkash_number")
     return val if val else "01925263571"
@@ -174,6 +172,10 @@ def get_coin_rate():
     val = get_setting("coin_rate_per_1000")
     return float(val) if val else 12.0
 
+def get_bot_domain():
+    val = get_setting("bot_domain")
+    return val if val else "https://sojol-bot.onrender.com"
+
 def get_smm_api_url():
     val = get_setting("smm_api_url")
     return val if val else SMMSUN_API_URL
@@ -182,7 +184,6 @@ def get_smm_api_key():
     val = get_setting("smm_api_key")
     return val if val else SMMSUN_API_KEY
 
-# --- ইউজার অথেনটিকেশন এবং ব্যালেন্স মেথড ---
 def is_admin(chat_id):
     if chat_id == MAIN_ADMIN_ID:
         return True
@@ -375,11 +376,227 @@ def get_user_payments(chat_id):
 
 init_db()
 
-# ----------------- 📱 100% SECURE SMS WEBHOOK -----------------
+# ----------------- 📱 SECURE WEB-APP PAYMENT SYSTEM -----------------
 @app.route('/')
 def home():
+    # ডোমেইন স্বয়ংক্রিয়ভাবে ডিটেক্ট করা হবে
+    set_setting("bot_domain", request.url_root.strip('/'))
     return "SMM Bot Server is Alive and 24/7 Running!", 200
 
+# কাস্টম গেটওয়ে পেইজ এইচটিএমএল
+@app.route('/payment-page')
+def payment_page():
+    coins = request.args.get('coins', '1000')
+    bdt = request.args.get('bdt', '12')
+    bkash_num = request.args.get('bkash', '01925263571')
+    nagad_num = request.args.get('nagad', '01925263571')
+    
+    html_content = """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>MR PAY GATEWAY</title>
+        <script src="https://telegram.org/js/telegram-web-app.js"></script>
+        <style>
+            body { font-family: 'Arial', sans-serif; background-color: #F3F8FF; margin: 0; padding: 15px; color: #333; }
+            .container { background-color: #fff; border-radius: 15px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); text-align: center; }
+            .header-logo { width: 80px; height: 80px; margin: 0 auto 10px; background: #E9F2FE; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: bold; color: #1E88E5; border: 2px solid #D2E5FA; }
+            .title { font-size: 18px; font-weight: bold; margin-bottom: 5px; color: #111; }
+            .badge-bdt { font-size: 24px; font-weight: bold; color: #1E88E5; margin: 15px 0; }
+            .instructions-banner { background-color: #FEF9E7; border: 1px solid #FADBD8; padding: 10px; border-radius: 10px; font-size: 12px; margin-bottom: 20px; color: #BA4A00; }
+            .method-btn { background-color: #1E88E5; color: white; padding: 15px; border-radius: 10px; font-size: 16px; font-weight: bold; border: none; width: 100%; cursor: pointer; transition: 0.3s; margin-bottom: 15px; }
+            .payment-box { display: none; text-align: left; padding: 15px; border-radius: 15px; color: white; }
+            .bkash-theme { background: #E2125D; display: none; }
+            .nagad-theme { background: #E11C24; display: none; }
+            .input-trx { width: calc(100% - 24px); padding: 12px; border-radius: 8px; border: none; margin: 15px 0; font-size: 15px; }
+            .copy-row { display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.2); padding: 10px; border-radius: 8px; font-size: 14px; margin-top: 5px; }
+            .copy-btn { background: white; color: #333; border: none; padding: 5px 12px; border-radius: 5px; cursor: pointer; font-size: 12px; font-weight: bold; }
+            .verify-btn { background: #fff; color: #333; width: 100%; padding: 14px; border-radius: 10px; border: none; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+            .footer-nav { margin-top: 15px; display: flex; gap: 10px; justify-content: center; }
+            .icon-btn { background: #fff; border: 1px solid #ddd; border-radius: 50%; width: 45px; height: 45px; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; text-decoration: none; }
+            .gateway-options { display: flex; justify-content: space-around; margin-top: 15px; }
+            .gate-select-btn { border: 1px solid #ddd; background: white; padding: 15px; border-radius: 12px; width: 45%; cursor: pointer; transition: 0.2s; text-align: center; }
+            .gate-select-btn img { max-height: 45px; max-width: 100%; display: block; margin: 0 auto; }
+            .active-view { display: block !important; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <!-- ১ম পেইজ: মেথড সিলেকশন -->
+            <div id="method-selection-view" class="active-view">
+                <div class="header-logo">MR</div>
+                <div class="title">MR PAY</div>
+                <button class="method-btn">Mobile Banking</button>
+                <div class="gateway-options">
+                    <div class="gate-select-btn" onclick="switchView('bkash')">
+                        <img src="https://i.ibb.co/C07B0hP/bkash.png" alt="bKash" onerror="this.src='https://upload.wikimedia.org/wikipedia/commons/thumb/8/8c/BKash_Logo.svg/1200px-BKash_Logo.svg.png'">
+                    </div>
+                    <div class="gate-select-btn" onclick="switchView('nagad')">
+                        <img src="https://i.ibb.co/37N1hR1/nagad.png" alt="Nagad" onerror="this.src='https://www.logo.freetls.fastly.net/logos/nagad.png'">
+                    </div>
+                </div>
+                <div class="footer-nav">
+                    <a href="https://t.me/Mr_Sojol_Ceo" class="icon-btn">🎧</a>
+                    <a href="https://wa.me/8801925263571" class="icon-btn">💬</a>
+                    <a href="tel:01925263571" class="icon-btn">📞</a>
+                </div>
+                <button class="method-btn" style="margin-top:25px; background:#D4E6F1; color:#1E88E5;" disabled>Pay {{ bdt }} BDT</button>
+            </div>
+
+            <!-- বিকাশ পেমেন্ট পেইজ -->
+            <div id="bkash-payment-view" class="payment-box bkash-theme">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:bold; font-size:18px;">bKash Personal</span>
+                    <span style="font-weight:bold; font-size:18px;">{{ bdt }} BDT</span>
+                </div>
+                <div class="instructions-banner" style="margin-top:10px; color:#E2125D; background:#FADBD8;">
+                    নোটঃ টাকা পাঠানোর ৫-১০ সেকেন্ড পর ভেরিফাই করবেন।
+                </div>
+                
+                <label style="font-size:14px; font-weight:bold;">ট্রানজেকশন আইডি দিন</label>
+                <input type="text" id="bkash-trx" class="input-trx" placeholder="ট্রানজেকশন আইডি দিন">
+
+                <div style="font-size:13px; line-height:1.6;">
+                    <p>• <b>*247#</b> ডায়াল করে আপনার <b>BKASH</b> মোবাইল মেন্যুতে যান অথবা <b>BKASH</b> অ্যাপে যান।</p>
+                    <p>• <b>"Send Money"</b> এ ক্লিক করুন।</p>
+                    <p>• প্রাপক নাম্বার হিসেবে নিচের নাম্বারটি লিখুন:</p>
+                    <div class="copy-row">
+                        <span id="bkash-num-val" style="font-weight:bold; font-size:15px;">{{ bkash_num }}</span>
+                        <button class="copy-btn" onclick="copyNumber('{{ bkash_num }}')">Copy</button>
+                    </div>
+                    <p>• পরিমাণ: <b>{{ bdt }} BDT</b> দিয়ে পিন নম্বর দিয়ে সেন্ড করুন।</p>
+                    <p>• সফলভাবে পাঠানো সম্পন্ন হলে প্রাপ্ত <b>Transaction ID</b> ওপরে বসিয়ে নিচের বাটনে ক্লিক করুন।</p>
+                </div>
+                <button class="verify-btn" onclick="verifyTrx('bkash')">VERIFY TRANSACTION</button>
+                <button class="verify-btn" style="background:transparent; color:white; border:1px solid white; margin-top:10px;" onclick="goHome()">BACK</button>
+            </div>
+
+            <!-- নগদ পেমেন্ট পেইজ -->
+            <div id="nagad-payment-view" class="payment-box nagad-theme">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-weight:bold; font-size:18px;">Nagad Personal</span>
+                    <span style="font-weight:bold; font-size:18px;">{{ bdt }} BDT</span>
+                </div>
+                <div class="instructions-banner" style="margin-top:10px; color:#C0392B; background:#FADBD8;">
+                    নোটঃ টাকা পাঠানোর ৫-১০ সেকেন্ড পর ভেরিফাই করবেন।
+                </div>
+                
+                <label style="font-size:14px; font-weight:bold;">ট্রানজেকশন আইডি দিন</label>
+                <input type="text" id="nagad-trx" class="input-trx" placeholder="ট্রানজেকশন আইডি দিন">
+
+                <div style="font-size:13px; line-height:1.6;">
+                    <p>• <b>*167#</b> ডায়াল করে আপনার <b>NAGAD</b> মোবাইল মেন্যুতে যান অথবা <b>NAGAD</b> অ্যাপে যান।</p>
+                    <p>• <b>"Send Money"</b> এ ক্লিক করুন।</p>
+                    <p>• প্রাপক নাম্বার হিসেবে নিচের নাম্বারটি লিখুন:</p>
+                    <div class="copy-row">
+                        <span id="nagad-num-val" style="font-weight:bold; font-size:15px;">{{ nagad_num }}</span>
+                        <button class="copy-btn" onclick="copyNumber('{{ nagad_num }}')">Copy</button>
+                    </div>
+                    <p>• পরিমাণ: <b>{{ bdt }} BDT</b> দিয়ে পিন নম্বর দিয়ে সেন্ড করুন।</p>
+                    <p>• সফলভাবে পাঠানো সম্পন্ন হলে প্রাপ্ত <b>Transaction ID</b> ওপরে বসিয়ে নিচের বাটনে ক্লিক করুন।</p>
+                </div>
+                <button class="verify-btn" onclick="verifyTrx('nagad')">VERIFY TRANSACTION</button>
+                <button class="verify-btn" style="background:transparent; color:white; border:1px solid white; margin-top:10px;" onclick="goHome()">BACK</button>
+            </div>
+
+        </div>
+
+        <script>
+            // টেলিগ্রাম ওয়েব-অ্যাপ ইনিশিয়ালাইজেশন
+            const tg = window.Telegram.WebApp;
+            tg.expand(); // ফুলস্ক্রিন ভিউ
+
+            function switchView(method) {
+                document.getElementById('method-selection-view').classList.remove('active-view');
+                if (method === 'bkash') {
+                    document.getElementById('bkash-payment-view').classList.add('active-view');
+                } else {
+                    document.getElementById('nagad-payment-view').classList.add('active-view');
+                }
+            }
+
+            function goHome() {
+                document.getElementById('bkash-payment-view').classList.remove('active-view');
+                document.getElementById('nagad-payment-view').classList.remove('active-view');
+                document.getElementById('method-selection-view').classList.add('active-view');
+            }
+
+            function copyNumber(num) {
+                navigator.clipboard.writeText(num).then(() => {
+                    alert('নাম্বারটি কপি করা হয়েছে!');
+                });
+            }
+
+            function verifyTrx(method) {
+                let trx = '';
+                if (method === 'bkash') {
+                    trx = document.getElementById('bkash-trx').value.trim();
+                } else {
+                    trx = document.getElementById('nagad-trx').value.trim();
+                }
+
+                if (trx.length < 8) {
+                    alert('অনুগ্রহ করে সঠিক ৮-১০ ডিজিটের TrxID টাইপ করুন।');
+                    return;
+                }
+
+                // টেলিগ্রাম বোট চ্যাটে ট্রানজেকশন আইডি পাঠানো
+                tg.sendData(trx);
+            }
+        </script>
+    </body>
+    </html>
+    """
+    return render_template_string(html_content, coins=coins, bdt=bdt, bkash_num=bkash_num, nagad_num=nagad_num)
+
+# --- ওয়েব অ্যাপ সাবমিট হ্যান্ডলার ---
+@bot.message_handler(content_types=['web_app_data'])
+def handle_web_app_data(message):
+    chat_id = message.chat.id
+    user_txid = message.web_app_data.data.strip().upper()
+
+    amount, method = claim_auto_trx(user_txid)
+
+    if amount and method:
+        if chat_id in FAILED_ATTEMPTS:
+            FAILED_ATTEMPTS.pop(chat_id)
+
+        # কয়েন কাস্টমারকে যোগ করে দেওয়া
+        received_coins = (amount / get_coin_rate()) * 1000.0
+
+        current_bal = get_balance(chat_id)
+        new_balance = current_bal + received_coins
+        update_balance(chat_id, new_balance)
+        add_payment_to_db(chat_id, method, received_coins, user_txid, status='Approved')
+
+        bot.send_message(
+            chat_id,
+            f"✅ <b>পেমেন্ট সফলভাবে ভেরিফাই হয়েছে!</b>\n\n"
+            f"💳 <b>মেথড:</b> {method}\n"
+            f"🪙 <b>প্রাপ্ত কয়েন:</b> <b>{received_coins:.2f} Coin</b>\n"
+            f"💰 <b>বর্তমান মোট ব্যালেন্স:</b> <b>{new_balance:.2f} Coin</b> 🎉",
+            reply_markup=get_main_menu_markup(chat_id),
+            parse_mode="HTML"
+        )
+
+        try:
+            bot.send_message(MAIN_ADMIN_ID, f"🎉 <b>AUTO DEPOSIT SUCCESSFUL!</b>\n\n👤 User: <code>{chat_id}</code>\n🪙 Amount: <b>{received_coins:.2f} Coin</b> ({method})\n🆔 TxID: <code>{user_txid}</code>", parse_mode="HTML")
+        except Exception:
+            pass
+    else:
+        bot.send_message(
+            chat_id,
+            "❌ <b>ট্রানজেকশন আইডি পাওয়া যায়নি বা ইতিপূর্বে ক্লেইম করা হয়েছে!</b>\n\n"
+            "১. পেমেন্ট সম্পন্ন করা নিশ্চিত করুন।\n"
+            "২. টাকা পাঠানোর ১-২ মিনিট পর আবার ট্রাই করুন।\n"
+            "৩. সমস্যা হলে এডমিনের সাথে কথা বলুন।",
+            reply_markup=get_main_menu_markup(chat_id),
+            parse_mode="HTML"
+        )
+
+# ----------------- 📱 SMS WEBHOOK -----------------
 @app.route('/sms-webhook', methods=['POST', 'GET'])
 def sms_webhook():
     try:
@@ -1174,7 +1391,7 @@ def get_main_menu_markup(chat_id):
     btn1 = types.KeyboardButton("🛒 নতুন অর্ডার")
     btn2 = types.KeyboardButton("👤 আমার অ্যাকাউন্ট")
     btn3 = types.KeyboardButton("📜 অর্ডার হিস্ট্রি")
-    btn4 = types.KeyboardButton("📢 আমাদের অফিশিয়াল চ্যানেল")
+    btn4 = types.KeyboardButton("📜 অল ইউজার অর্ডার হিস্ট্রি")
     btn5 = types.KeyboardButton("💳 Buy Coin (টাকা রিচার্জ)")
     btn6 = types.KeyboardButton("📞 সাপোর্ট")
     markup.add(btn1, btn2, btn3, btn4, btn5, btn6)
@@ -1366,7 +1583,7 @@ def handle_menu_buttons(message):
             "প্রথমে ওপরের বিকাশ অথবা নগদ নাম্বারে টাকা <b>Send Money</b> করুন। "
             "এরপর নিচে থাকা পেমেন্ট বাটনে ক্লিক করে সঠিক কয়েনের পরিমাণ ও TrxID প্রদান করুন। "
             "সার্ভার অটোমেটিক আপনার ব্যালেন্স অ্যাড করে দেবে।\n\n"
-            "👇 <b>রিচার্জ শুরু করতে নিচের বাটনে ক্লিক করুন:</b>"
+            "👇 <b>রিচার্জ করতে নিচের বাটনে ক্লিক করুন:</b>"
         )
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add(types.KeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন"), types.KeyboardButton("⬅️ প্রধান মেনু"))
@@ -1377,7 +1594,7 @@ def handle_menu_buttons(message):
         bot.register_next_step_handler(msg, get_intended_deposit_amount)
 
     # --- ৬. অল ইউজার অর্ডার হিস্ট্রি চ্যানেল বাটন ---
-    elif text == "📢 আমাদের অফিশিয়াল চ্যানেল":
+    elif text == "📜 অল ইউজার অর্ডার হিস্ট্রি":
         link = get_channel_link()
         markup = types.InlineKeyboardMarkup()
         markup.add(types.InlineKeyboardButton("🔗 চ্যানেলে প্রবেশ করুন", url=link))
@@ -1622,73 +1839,26 @@ def get_intended_deposit_amount(message):
         return
     
     bdt_cost = (intended_amount / 1000.0) * get_coin_rate()
+    bkash_num = get_bkash_number()
+    nagad_num = get_nagad_number()
+    bot_domain = get_bot_domain()
+    
+    # ইনলাইন ওয়েব অ্যাপ ইউআরএল
+    web_app_url = f"{bot_domain}/payment-page?coins={intended_amount}&bdt={bdt_cost}&bkash={bkash_num}&nagad={nagad_num}"
     
     msg_text = (
-        f"👍 <b>অনুরোধ গৃহীত হয়েছে!</b>\n\n"
-        f"💰 <b>আপনার কয়েন পরিমাণ:</b> <b>{intended_amount:.2f} Coin</b>\n"
-        f"💵 <b>প্রয়োজনীয় টাকা:</b> <b>{bdt_cost:.2f} BDT</b>\n\n"
-        f"👉 আমাদের বিকাশ/নগদ নাম্বারে <b>{bdt_cost:.2f} BDT</b> Send Money করার পর পেমেন্টের <b>TrxID (ট্রানজেকশন আইডি)</b> টি এখানে পেস্ট করুন:"
+        f"👍 <b>কয়েন ক্রয়ের অনুরোধ গৃহীত হয়েছে!</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🪙 <b>কয়েনের পরিমাণ:</b> <b>{intended_amount:.2f} Coin</b>\n"
+        f"💵 <b>টাকা পরিমাণ:</b> <b>{bdt_cost:.2f} BDT</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👉 পেমেন্ট সম্পন্ন করতে নিচের <b>'💳 পেমেন্ট করতে এখানে ক্লিক করুন'</b> বাটনে ক্লিক করুন।"
     )
-    msg = bot.send_message(chat_id, msg_text, reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add("⬅️ প্রধান মেনু"), parse_mode="HTML")
-    bot.register_next_step_handler(msg, process_auto_trx_claim)
-
-def process_auto_trx_claim(message):
-    chat_id = message.chat.id
-    user_txid = message.text.strip().upper()
-
-    if user_txid == "⬅️ প্রধান মেনু":
-        send_main_menu(chat_id, message.from_user.first_name)
-        return
-
-    if len(user_txid) < 8 or len(user_txid) > 15:
-        msg = bot.send_message(chat_id, "❌ <b>ভুল ট্রানজেকশন আইডি ফরম্যাট!</b> সঠিক আইডি দিন:", parse_mode="HTML")
-        bot.register_next_step_handler(msg, process_auto_trx_claim)
-        return
-
-    amount, method = claim_auto_trx(user_txid)
-
-    if amount and method:
-        if chat_id in FAILED_ATTEMPTS:
-            FAILED_ATTEMPTS.pop(chat_id)
-
-        # কয়েন হিসাব রূপান্তর
-        received_coins = (amount / get_coin_rate()) * 1000.0
-
-        current_bal = get_balance(chat_id)
-        new_balance = current_bal + received_coins
-        update_balance(chat_id, new_balance)
-        add_payment_to_db(chat_id, method, received_coins, user_txid, status='Approved')
-
-        bot.send_message(
-            chat_id,
-            f"✅ <b>পেমেন্ট সফলভাবে ভেরিফাই হয়েছে!</b>\n\n"
-            f"💳 <b>মেথড:</b> {method}\n"
-            f"🪙 <b>প্রাপ্ত কয়েন:</b> <b>{received_coins:.2f} Coin</b>\n"
-            f"💰 <b>বর্তমান মোট ব্যালেন্স:</b> <b>{new_balance:.2f} Coin</b> 🎉",
-            reply_markup=get_main_menu_markup(chat_id),
-            parse_mode="HTML"
-        )
-
-        try:
-            bot.send_message(MAIN_ADMIN_ID, f"🎉 <b>AUTO DEPOSIT SUCCESSFUL!</b>\n\n👤 User: <code>{chat_id}</code>\n🪙 Amount: <b>{received_coins:.2f} Coin</b> ({method})\n🆔 TxID: <code>{user_txid}</code>", parse_mode="HTML")
-        except Exception:
-            pass
-    else:
-        now = time.time()
-        user_fail_data = FAILED_ATTEMPTS.get(chat_id, {"count": 0, "time": now})
-        user_fail_data["count"] += 1
-        user_fail_data["time"] = now
-        FAILED_ATTEMPTS[chat_id] = user_fail_data
-
-        bot.send_message(
-            chat_id,
-            f"❌ <b>ট্রানজেকশন আইডি পাওয়া যায়নি বা ইতিপূর্বে ক্লেইম করা হয়েছে! (ভুল সাবমিট: {user_fail_data['count']}/3)</b>\n\n"
-            "১. পেমেন্ট সম্পন্ন করা নিশ্চিত করুন।\n"
-            "২. টাকা পাঠানোর ১-২ মিনিট পর আবার ট্রাই করুন।\n"
-            "৩. সমস্যা হলে এডমিনের সাথে কথা বলুন।",
-            reply_markup=get_main_menu_markup(chat_id),
-            parse_mode="HTML"
-        )
+    
+    markup = types.InlineKeyboardMarkup()
+    markup.add(types.InlineKeyboardButton("💳 পেমেন্ট করতে এখানে ক্লিক করুন", web_app=types.WebAppInfo(url=web_app_url)))
+    
+    bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode="HTML")
 
 # ----------------- 🚀 RENDER/TERMUX FLASK THREAD -----------------
 def start_bot_polling():
