@@ -587,6 +587,7 @@ def payment_page():
 
         <script>
             const tg = window.Telegram.WebApp;
+            tg.ready();
             tg.expand();
 
             function switchView(method) {
@@ -617,6 +618,7 @@ def payment_page():
                     return;
                 }
                 tg.sendData(trx);
+                tg.close();
             }
         </script>
     </body>
@@ -667,15 +669,16 @@ def verify_and_credit_payment(chat_id, raw_txid):
         return True
     return False
 
-# --- ওয়েব অ্যাপ সাবমিট হ্যান্ডলার ---
+# --- ওয়েব অ্যাপ সাবমিট হ্যান্ডলার (CLICK TO PAY থেকে TrxID গ্রহণ) ---
 @bot.message_handler(content_types=['web_app_data'])
 def handle_web_app_data(message):
     chat_id = message.chat.id
-    raw_txid = message.web_app_data.data.strip()
+    clear_user_steps(chat_id)
+    raw_txid = message.web_app_data.data.strip() if (message.web_app_data and message.web_app_data.data) else ""
     if not verify_and_credit_payment(chat_id, raw_txid):
         bot.send_message(
             chat_id,
-            "❌ <b>অনুরোধ প্রত্যাখ্যান! সঠিক TrxID পাওয়া যায়নি অথবা এটি ইতিমধ্যে ভেরিফাই হয়ে গেছে।\nটাকা পাঠানোর ৫-১০ সেকেন্ড পর আবার TrxID দিয়ে চেষ্টা করুন।</b>",
+            "❌ <b>অনুরোধ প্রত্যাখ্যান! সঠিক TrxID পাওয়া যায়নি অথবা টাকা পাঠানোর ৫-১০ সেকেন্ড হয়নি।</b>\n\nঅনুগ্রহ করে '💳 CLICK TO PAY' বাটনে ক্লিক করে সঠিক TrxID দিয়ে পুনরায় চেষ্টা করুন।",
             reply_markup=get_main_menu_markup(chat_id),
             parse_mode="HTML"
         )
@@ -1674,13 +1677,6 @@ def handle_menu_buttons(message):
         send_main_menu(chat_id, message.from_user.first_name)
         return
 
-    # 💳 চ্যাটে যেকোনো জায়গায় TrxID দিলে স্বয়ংক্রিয়ভাবে ব্যালেন্স অ্যাড হবে
-    cleaned_tx_test = clean_transaction_id(text)
-    if 6 <= len(cleaned_tx_test) <= 20:
-        if verify_and_credit_payment(chat_id, cleaned_tx_test):
-            clear_user_steps(chat_id)
-            return
-
     # --- ১. প্রফেশনাল প্রোফাইল ড্যাশবোর্ড কার্ড ---
     if text == "👤 MY PROFILE":
         balance = get_balance(chat_id)
@@ -1762,15 +1758,6 @@ def handle_menu_buttons(message):
             parse_mode="HTML"
         )
         bot.register_next_step_handler(msg, get_intended_deposit_amount)
-
-    elif text == "💳 CLICK TO PAY":
-        msg = bot.send_message(
-            chat_id, 
-            "✍️ <b>টাকা পাঠানোর পর প্রাপ্ত TrxID টি লিখে পাঠিয়ে দিন:</b>",
-            reply_markup=types.ReplyKeyboardMarkup(resize_keyboard=True).add("⬅️ MAIN MENU"),
-            parse_mode="HTML"
-        )
-        bot.register_next_step_handler(msg, process_trx_input_step)
 
     # --- ৬. কাস্টম কন্টেন্ট বাটন ---
     elif text == "💰 ORDER PRICE":
@@ -1966,12 +1953,6 @@ def get_intended_deposit_amount(message):
         send_main_menu(chat_id, message.from_user.first_name)
         return
 
-    cleaned_possible_tx = clean_transaction_id(amount_str)
-    if 6 <= len(cleaned_possible_tx) <= 20 and not amount_str.isdigit():
-        if verify_and_credit_payment(chat_id, cleaned_possible_tx):
-            clear_user_steps(chat_id)
-            return
-
     try:
         if not amount_str.replace('.', '', 1).isdigit():
             msg = bot.send_message(chat_id, "❌ <b>ভুল ইনপুট! শুধু সংখ্যা লিখে পাঠান (যেমন: 10, 50, 100):</b>", parse_mode="HTML")
@@ -2003,8 +1984,8 @@ def get_intended_deposit_amount(message):
             f"📱 <b>বিকাশ পার্সোনাল:</b> (চাপ দিলেই কপি হবে)\n<code>{bkash_num}</code>\n\n"
             f"💸 <b>নগদ পার্সোনাল:</b> (চাপ দিলেই কপি হবে)\n<code>{nagad_num}</code>\n\n"
             "⚠️ <b>নির্দেশনা:</b>\n"
-            "প্রথমে ওপরের বিকাশ অথবা নগদ নাম্বারে টাকা <b>Send Money</b> করুন। এরপর নিচে প্রাপ্ত <b>TrxID</b>-টি লিখে পাঠিয়ে দিন অথবা '💳 CLICK TO PAY' বাটনে ক্লিক করুন।\n\n"
-            "👇 <b>টাকা পাঠানো শেষ হলে প্রাপ্ত TrxID টি নিচে লিখে পাঠান:</b>"
+            "প্রথমে ওপরের বিকাশ অথবা নগদ নাম্বারে টাকা <b>Send Money</b> করুন। এরপর নিচে থাকা <b>'💳 CLICK TO PAY'</b> বাটনে ক্লিক করে সঠিক TrxID দিয়ে ভেরিফাই করুন। সার্ভার অটোমেটিক আপনার ব্যালেন্স অ্যাড করে দেবে।\n\n"
+            "👇 <b>রিচার্জ সম্পন্ন করতে নিচের বাটনে ক্লিক করুন:</b>"
         )
         
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -2015,39 +1996,11 @@ def get_intended_deposit_amount(message):
             markup.add(types.KeyboardButton("💳 CLICK TO PAY"))
             
         markup.add("⬅️ MAIN MENU")
-        msg = bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode="HTML")
-        bot.register_next_step_handler(msg, process_trx_input_step)
+        bot.send_message(chat_id, msg_text, reply_markup=markup, parse_mode="HTML")
         
     except Exception as e:
         error_msg = f"❌ <b>ক্যালকুলেশন ত্রুটি:</b> <code>{str(e)}</code>"
         bot.send_message(chat_id, error_msg, reply_markup=get_main_menu_markup(chat_id), parse_mode="HTML")
-
-# --- TrxID সরাসরি ইনপুট হ্যান্ডলার ---
-def process_trx_input_step(message):
-    chat_id = message.chat.id
-    user_text = message.text.strip()
-
-    if user_text == "⬅️ MAIN MENU" or user_text == "⬅️ প্রধান মেনু":
-        clear_user_steps(chat_id)
-        send_main_menu(chat_id, message.from_user.first_name)
-        return
-
-    if user_text == "💳 CLICK TO PAY":
-        msg = bot.send_message(chat_id, "✍️ <b>টাকা পাঠানোর পর প্রাপ্ত Transaction ID (TrxID) টি লিখে পাঠান:</b>", parse_mode="HTML")
-        bot.register_next_step_handler(msg, process_trx_input_step)
-        return
-
-    cleaned_tx = clean_transaction_id(user_text)
-    if verify_and_credit_payment(chat_id, cleaned_tx):
-        clear_user_steps(chat_id)
-    else:
-        msg = bot.send_message(
-            chat_id, 
-            "❌ <b>অনুরোধ প্রত্যাখ্যান! সঠিক TrxID পাওয়া যায়নি অথবা টাকা পাঠানোর ৫-১০ সেকেন্ড হয়নি।</b>\n\n"
-            "অনুগ্রহ করে সঠিক TrxID দেখে পুনরায় টাইপ করে পাঠান:",
-            parse_mode="HTML"
-        )
-        bot.register_next_step_handler(msg, process_trx_input_step)
 
 # ----------------- 🚀 RENDER/TERMUX FLASK THREAD -----------------
 def start_bot_polling():
